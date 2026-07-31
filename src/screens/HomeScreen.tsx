@@ -206,7 +206,7 @@ const WEB_MAP_HTML = `
   </script>
 </body>
 </html>
-\`;
+`;
 
 const HomeScreen = () => {
   const theme = useTheme();
@@ -287,7 +287,7 @@ const HomeScreen = () => {
       let osrmProfile = 'driving';
       if (mode === 'foot') osrmProfile = 'foot';
 
-      const url = \`https://router.project-osrm.org/route/v1/\${osrmProfile}/\${startLng},\${startLat};\${destLng},\${destLat}?overview=full&geometries=geojson\`;
+      const url = `https://router.project-osrm.org/route/v1/\${osrmProfile}/\${startLng},\${startLat};\${destLng},\${destLat}?overview=full&geometries=geojson`;
 
       const response = await fetch(url);
       const data = await response.json();
@@ -304,8 +304,8 @@ const HomeScreen = () => {
         const distKm = (primaryRoute.distance / 1000).toFixed(1);
         const durationMins = Math.round(primaryRoute.duration / 60);
         setRouteInfo({
-          distance: \`\${distKm} km\`,
-          duration: \`\${durationMins} mnt\`,
+          distance: `\${distKm} km`,
+          duration: `\${durationMins} mnt`,
         });
 
         postToWebMap({ type: 'SET_ROUTE', coordinates });
@@ -398,9 +398,9 @@ const HomeScreen = () => {
 
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        let url = \`https://nominatim.openstreetmap.org/search?q=\${encodeURIComponent(query)}&format=json&limit=6&addressdetails=1\`;
+        let url = `https://nominatim.openstreetmap.org/search?q=\${encodeURIComponent(query)}&format=json&limit=6&addressdetails=1`;
         if (currentLocation) {
-          url += \`&lat=\${currentLocation.latitude}&lon=\${currentLocation.longitude}\`;
+          url += `&lat=\${currentLocation.latitude}&lon=\${currentLocation.longitude}`;
         }
 
         const response = await fetch(url, {
@@ -832,7 +832,7 @@ const HomeScreen = () => {
               <View style={{ marginLeft: 12 }}>
                 <Text style={styles.recenterTitleText}>Ke tengah</Text>
                 <Text style={styles.recenterSubText}>
-                  {routeInfo ? \`\${routeInfo.duration} • \${routeInfo.distance}\` : 'Mengkalkulasi...'}
+                  {routeInfo ? `\${routeInfo.duration} • \${routeInfo.distance}` : 'Mengkalkulasi...'}
                 </Text>
               </View>
             </TouchableOpacity>
