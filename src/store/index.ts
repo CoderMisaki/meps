@@ -3,19 +3,31 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { Platform } from 'react-native';
 import { Settings } from '../types/database';
 
-// Safe Storage Abstraction for Web & Native
 const getStorage = () => {
   if (Platform.OS === 'web') {
     return {
       getItem: (name: string) => {
-        if (typeof window === 'undefined') return null;
-        return localStorage.getItem(name);
+        try {
+          if (typeof window === 'undefined') return null;
+          return localStorage.getItem(name);
+        } catch (e) {
+          console.error('Error accessing localStorage:', e);
+          return null;
+        }
       },
       setItem: (name: string, value: string) => {
-        if (typeof window !== 'undefined') localStorage.setItem(name, value);
+        try {
+          if (typeof window !== 'undefined') localStorage.setItem(name, value);
+        } catch (e) {
+          console.error('Error writing to localStorage:', e);
+        }
       },
       removeItem: (name: string) => {
-        if (typeof window !== 'undefined') localStorage.removeItem(name);
+        try {
+          if (typeof window !== 'undefined') localStorage.removeItem(name);
+        } catch (e) {
+          console.error('Error removing from localStorage:', e);
+        }
       },
     };
   }

@@ -4,13 +4,13 @@ import { FAB, useTheme, Searchbar, Text } from 'react-native-paper';
 import { useAppStore } from '../store';
 import * as Location from 'expo-location';
 import { startLocationTracking, stopLocationTracking } from '../services/location';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // Load MapView hanya jika bukan Web
 let MapView: any = null;
 if (Platform.OS !== 'web') {
   MapView = require('react-native-maps').default;
 }
-
 
 const HomeScreen = () => {
   const theme = useTheme();
@@ -20,41 +20,51 @@ const HomeScreen = () => {
 
   useEffect(() => {
     (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        console.error('Permission to access location was denied');
-        return;
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('Permission to access location was denied');
+          return;
+        }
+
+        let location = await Location.getCurrentPositionAsync({});
+        setCurrentLocation({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+
+        if (mapRef.current?.animateToRegion) {
+          mapRef.current.animateToRegion({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          });
+        }
+      } catch (err) {
+        console.error('Error getting location:', err);
       }
-
-      let location = await Location.getCurrentPositionAsync({});
-      setCurrentLocation({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
-
-      mapRef.current?.animateToRegion({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      });
     })();
   }, []);
 
   const handleToggleTracking = async () => {
-    const nextTrackingState = !isTracking;
-    setTracking(nextTrackingState);
+    try {
+      const nextTrackingState = !isTracking;
+      setTracking(nextTrackingState);
 
-    if (nextTrackingState) {
-      await startLocationTracking();
-    } else {
-      await stopLocationTracking();
+      if (nextTrackingState) {
+        await startLocationTracking();
+      } else {
+        await stopLocationTracking();
+      }
+    } catch (err) {
+      console.error('Error toggling tracking:', err);
     }
   };
 
   const centerMap = () => {
-    if (currentLocation) {
-      mapRef.current?.animateToRegion({
+    if (currentLocation && mapRef.current?.animateToRegion) {
+      mapRef.current.animateToRegion({
         ...currentLocation,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
@@ -67,18 +77,22 @@ const HomeScreen = () => {
       {/* Fallback Peta untuk Web */}
       {Platform.OS === 'web' ? (
         <View style={[styles.map, styles.webMapFallback, { backgroundColor: theme.colors.surfaceVariant }]}>
-          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+          <MaterialCommunityIcons name="map" size={64} color={theme.colors.onSurfaceVariant} />
+          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 16 }}>
             Peta Interaktif (Mode Mobile Native)
           </Text>
           <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}>
-            Lokasi Saat Ini: {currentLocation ? `${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}` : 'Memuat lokasi...'}
+            Lokasi Saat Ini:{' '}
+            {currentLocation
+              ? `${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}`
+              : 'Memuat lokasi...'}
           </Text>
         </View>
       ) : (
         <MapView
           ref={mapRef}
           style={styles.map}
-          mapType={settings.mapType as any}
+          mapType={settings?.mapType ?? 'normal'}
           showsUserLocation
           showsCompass
           showsMyLocationButton={false}
@@ -104,7 +118,7 @@ const HomeScreen = () => {
           onPress={() => console.log('Layers')}
         />
         <FAB
-          icon={isTracking ? "stop" : "play"}
+          icon={isTracking ? 'stop' : 'play'}
           style={[styles.fab, { backgroundColor: isTracking ? theme.colors.error : theme.colors.primary }]}
           color={isTracking ? theme.colors.onError : theme.colors.onPrimary}
           onPress={handleToggleTracking}
