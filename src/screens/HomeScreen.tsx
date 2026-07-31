@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Platform } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { FAB, useTheme, Searchbar } from 'react-native-paper';
 import { useAppStore } from '../store';
 import * as Location from 'expo-location';
+import { startLocationTracking, stopLocationTracking } from '../services/location';
 
 const HomeScreen = () => {
   const theme = useTheme();
@@ -33,6 +34,17 @@ const HomeScreen = () => {
       });
     })();
   }, []);
+
+  const handleToggleTracking = async () => {
+    const nextTrackingState = !isTracking;
+    setTracking(nextTrackingState);
+
+    if (nextTrackingState) {
+      await startLocationTracking();
+    } else {
+      await stopLocationTracking();
+    }
+  };
 
   const centerMap = () => {
     if (currentLocation) {
@@ -77,7 +89,7 @@ const HomeScreen = () => {
           icon={isTracking ? "stop" : "play"}
           style={[styles.fab, { backgroundColor: isTracking ? theme.colors.error : theme.colors.primary }]}
           color={isTracking ? theme.colors.onError : theme.colors.onPrimary}
-          onPress={() => setTracking(!isTracking)}
+          onPress={handleToggleTracking}
         />
         <FAB
           icon="plus"

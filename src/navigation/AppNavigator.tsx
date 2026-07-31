@@ -1,7 +1,6 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
-import { useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import HomeScreen from '../screens/HomeScreen';
@@ -27,7 +26,7 @@ const AppNavigator = () => {
             if (route.name === 'Home') {
               iconName = focused ? 'map-marker' : 'map-marker-outline';
             } else if (route.name === 'Journey') {
-              iconName = focused ? 'history' : 'history'; // Using same for now, tweak later
+              iconName = focused ? 'clock-time-four' : 'clock-time-four-outline';
             } else if (route.name === 'Saved') {
               iconName = focused ? 'bookmark' : 'bookmark-outline';
             } else if (route.name === 'Settings') {

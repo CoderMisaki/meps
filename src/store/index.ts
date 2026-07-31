@@ -1,27 +1,36 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { MMKV } from 'react-native-mmkv';
+import { Platform } from 'react-native';
 import { Settings } from '../types/database';
 
-// In newer react-native-mmkv versions, MMKV is exported as a class or object, but the TS compiler
-// might complain if `MMKV` is not exported properly for ES modules.
-// Using require as fallback if type error persists.
-const MMKVStore = require('react-native-mmkv').MMKV;
+// Safe Storage Abstraction for Web & Native
+const getStorage = () => {
+  if (Platform.OS === 'web') {
+    return {
+      getItem: (name: string) => {
+        if (typeof window === 'undefined') return null;
+        return localStorage.getItem(name);
+      },
+      setItem: (name: string, value: string) => {
+        if (typeof window !== 'undefined') localStorage.setItem(name, value);
+      },
+      removeItem: (name: string) => {
+        if (typeof window !== 'undefined') localStorage.removeItem(name);
+      },
+    };
+  }
 
-export const storage = new MMKVStore();
-
-export const zustandStorage = {
-  setItem: (name: string, value: string) => {
-    return storage.set(name, value);
-  },
-  getItem: (name: string) => {
-    const value = storage.getString(name);
-    return value ?? null;
-  },
-  removeItem: (name: string) => {
-    return storage.delete(name);
-  },
+  // Native Mobile (iOS/Android)
+  const { MMKV } = require('react-native-mmkv');
+  const storage = new MMKV();
+  return {
+    getItem: (name: string) => storage.getString(name) ?? null,
+    setItem: (name: string, value: string) => storage.set(name, value),
+    removeItem: (name: string) => storage.delete(name),
+  };
 };
+
+export const zustandStorage = getStorage();
 
 interface AppState {
   settings: Settings;
@@ -53,7 +62,7 @@ export const useAppStore = create<AppState>()(
     {
       name: 'app-storage',
       storage: createJSONStorage(() => zustandStorage),
-      partialize: (state) => ({ settings: state.settings }), // Only persist settings
+      partialize: (state) => ({ settings: state.settings }),
     }
   )
 );
