@@ -22,6 +22,7 @@ import {
 } from 'react-native-paper';
 import { useAppStore } from '../store';
 import * as Location from 'expo-location';
+import * as DocumentPicker from 'expo-document-picker';
 import { useKeepAwake } from 'expo-keep-awake';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -49,9 +50,10 @@ interface CustomMarker {
   latitude: number;
   longitude: number;
   title: string;
+  photoUri?: string;
 }
 
-// Template HTML Peta Web (Leaflet) + PostMessage Communication
+// Template HTML Peta Web (Leaflet) + Compass Heading Arrow Marker
 const WEB_MAP_HTML = `
 <!DOCTYPE html>
 <html>
@@ -62,14 +64,37 @@ const WEB_MAP_HTML = `
   <style>
     html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; background-color: #171d2d; }
     .leaflet-control-attribution { display: none !important; }
-    .user-marker {
-      background-color: #1a73e8;
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      border: 3px solid #ffffff;
-      box-shadow: 0 0 12px rgba(26,115,232,0.8);
+
+    /* User Heading Marker dengan Panah Arah */
+    .user-heading-container {
+      position: relative;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
+    .user-heading-arrow {
+      position: absolute;
+      width: 0;
+      height: 0;
+      border-left: 9px solid transparent;
+      border-right: 9px solid transparent;
+      border-bottom: 18px solid #38b6ff;
+      top: 0px;
+      filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));
+      transition: transform 0.2s ease-out;
+    }
+    .user-dot {
+      width: 16px;
+      height: 16px;
+      background-color: #1a73e8;
+      border: 3px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 10px rgba(26,115,232,0.9);
+      z-index: 2;
+    }
+
     .dest-marker {
       background-color: #ea4335;
       width: 20px;
@@ -80,8 +105,8 @@ const WEB_MAP_HTML = `
     }
     .custom-pin {
       background-color: #fbbc04;
-      width: 16px;
-      height: 16px;
+      width: 18px;
+      height: 18px;
       border-radius: 50%;
       border: 2px solid #ffffff;
       box-shadow: 0 0 8px rgba(0,0,0,0.5);
@@ -100,35 +125,59 @@ const WEB_MAP_HTML = `
     var destMarker = null;
     var routePolyline = null;
     var customMarkersGroup = L.layerGroup().addTo(map);
+    var currentHeading = 0;
+
+    function createUserHeadingIcon(heading) {
+      return L.divIcon({
+        className: 'custom-user-icon',
+        html: '<div class="user-heading-container">' +
+                '<div class="user-heading-arrow" style="transform: rotate(' + (heading || 0) + 'deg);"></div>' +
+                '<div class="user-dot"></div>' +
+              '</div>',
+        iconSize: [40, 40],
+        iconAnchor: [20, 20]
+      });
+    }
 
     window.addEventListener('message', function(event) {
       try {
         var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (!data || !data.type) return;
 
-        // Update Lokasi Pengguna
+        // 1. Update Lokasi & Heading Pengguna
         if (data.type === 'UPDATE_LOCATION') {
           var lat = data.latitude;
           var lng = data.longitude;
+          if (data.heading !== undefined) currentHeading = data.heading;
+
           if (!userMarker) {
-            var userIcon = L.divIcon({ className: 'user-marker', iconSize: [22, 22], iconAnchor: [11, 11] });
-            userMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map);
+            userMarker = L.marker([lat, lng], { icon: createUserHeadingIcon(currentHeading) }).addTo(map);
             map.panTo([lat, lng]);
           } else {
             userMarker.setLatLng([lat, lng]);
+            userMarker.setIcon(createUserHeadingIcon(currentHeading));
           }
         }
 
-        // Set Titik Tujuan
+        // 2. Update Rotasi Panah Heading HP
+        if (data.type === 'UPDATE_HEADING') {
+          currentHeading = data.heading || 0;
+          if (userMarker) {
+            userMarker.setIcon(createUserHeadingIcon(currentHeading));
+          }
+        }
+
+        // 3. Set Titik Tujuan
         if (data.type === 'SET_DESTINATION') {
           if (destMarker) map.removeLayer(destMarker);
           if (data.destination) {
             var destIcon = L.divIcon({ className: 'dest-marker', iconSize: [24, 22], iconAnchor: [12, 11] });
             destMarker = L.marker([data.destination.latitude, data.destination.longitude], { icon: destIcon }).addTo(map);
+            destMarker.bindPopup(data.destination.title || 'Tujuan').openPopup();
           }
         }
 
-        // Gambar Garis Rute (Polyline)
+        // 4. Gambar Garis Rute (Polyline)
         if (data.type === 'SET_ROUTE') {
           if (routePolyline) map.removeLayer(routePolyline);
           if (data.coordinates && data.coordinates.length > 0) {
@@ -138,14 +187,14 @@ const WEB_MAP_HTML = `
           }
         }
 
-        // Center Map GPS
+        // 5. Center Map GPS
         if (data.type === 'CENTER_MAP') {
           if (data.latitude && data.longitude) {
             map.flyTo([data.latitude, data.longitude], 16, { animate: true, duration: 1 });
           }
         }
 
-        // Toggle Layer Peta (Satelit vs Normal)
+        // 6. Toggle Layer Peta
         if (data.type === 'TOGGLE_LAYER') {
           if (data.layer === 'satellite') {
             if (map.hasLayer(darkLayer)) map.removeLayer(darkLayer);
@@ -156,12 +205,17 @@ const WEB_MAP_HTML = `
           }
         }
 
-        // Tambah Marker Baru
+        // 7. Tambah Marker kustom
         if (data.type === 'ADD_MARKER') {
           var pinIcon = L.divIcon({ className: 'custom-pin', iconSize: [18, 18], iconAnchor: [9, 9] });
           var m = L.marker([data.latitude, data.longitude], { icon: pinIcon });
           if (data.title) m.bindPopup(data.title);
           customMarkersGroup.addLayer(m);
+        }
+
+        // 8. Bersihkan Hasil Kategori
+        if (data.type === 'CLEAR_CATEGORY_MARKERS') {
+          customMarkersGroup.clearLayers();
         }
       } catch(e) { console.error('Map Msg Error:', e); }
     });
@@ -182,6 +236,7 @@ const HomeScreen = () => {
   const [showPermissionDialog, setShowPermissionDialog] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [speed, setSpeed] = useState<number | null>(null);
+  const [deviceHeading, setDeviceHeading] = useState<number>(0);
 
   // Navigasi, Layer & Marker State
   const [destination, setDestination] = useState<Destination | null>(null);
@@ -190,29 +245,27 @@ const HomeScreen = () => {
   const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
   const [isSatellite, setIsSatellite] = useState(false);
+  const [isHeadingLocked, setIsHeadingLocked] = useState(false);
 
-  // Marker Tambahan
+  // Marker & Popup State
   const [customMarkers, setCustomMarkers] = useState<CustomMarker[]>([]);
   const [showAddMarkerDialog, setShowAddMarkerDialog] = useState(false);
   const [markerTitleInput, setMarkerTitleInput] = useState('');
+  const [selectedPhotoUri, setSelectedPhotoUri] = useState<string | null>(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastRerouteTimeRef = useRef<number>(0);
 
-  // Helper PostMessage ke Web Iframe
+  // Kirim Pesan ke Web Iframe
   const postToWebMap = (data: object) => {
     if (Platform.OS === 'web' && iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(JSON.stringify(data), '*');
     }
   };
 
-  // Jarak Haversine (Meter)
-  const calculateDistanceMeters = (
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number
-  ) => {
+  // 1. Rumus Jarak Haversine (Meter)
+  const calculateDistanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371e3;
     const φ1 = (lat1 * Math.PI) / 180;
     const φ2 = (lat2 * Math.PI) / 180;
@@ -227,7 +280,7 @@ const HomeScreen = () => {
     return R * c;
   };
 
-  // Deteksi keluar rute (> 35 meter)
+  // 2. Cek Keluar Rute Navigasi
   const isUserOffRoute = (
     userLat: number,
     userLng: number,
@@ -239,14 +292,12 @@ const HomeScreen = () => {
 
     for (const point of polyline) {
       const dist = calculateDistanceMeters(userLat, userLng, point.latitude, point.longitude);
-      if (dist < minDistance) {
-        minDistance = dist;
-      }
+      if (dist < minDistance) minDistance = dist;
     }
     return minDistance > thresholdMeters;
   };
 
-  // API Fetch Rute Tercepat OSRM Engine
+  // 3. API Fetch Rute Tercepat (OSRM Engine)
   const fetchFastestRoute = async (
     startLat: number,
     startLng: number,
@@ -293,7 +344,7 @@ const HomeScreen = () => {
     }
   };
 
-  // Request & Realtime Location Tracking
+  // 4. Request Lokasi & Pantau Heading Mata Angin HP
   const requestLocation = async () => {
     try {
       setLocationErrorMsg(null);
@@ -301,23 +352,24 @@ const HomeScreen = () => {
 
       if (status !== 'granted') {
         setShowPermissionDialog(true);
-        setLocationErrorMsg('Izin lokasi ditolak. Harap aktifkan izin lokasi.');
+        setLocationErrorMsg('Izin lokasi ditolak. Harap izinkan akses lokasi.');
         return;
       }
 
       setShowPermissionDialog(false);
       const isGpsEnabled = await Location.hasServicesEnabledAsync();
       if (!isGpsEnabled) {
-        setLocationErrorMsg('GPS belum aktif. Silakan aktifkan GPS perangkat Anda.');
+        setLocationErrorMsg('GPS belum aktif. Silakan aktifkan GPS.');
         setShowPermissionDialog(true);
         return;
       }
 
+      // Watch Position GPS Realtime
       await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
-          timeInterval: 2000,
-          distanceInterval: 3,
+          timeInterval: 1500,
+          distanceInterval: 2,
         },
         (location) => {
           const newCoords = {
@@ -331,6 +383,7 @@ const HomeScreen = () => {
             type: 'UPDATE_LOCATION',
             latitude: newCoords.latitude,
             longitude: newCoords.longitude,
+            heading: location.coords.heading || deviceHeading,
           });
 
           if (location.coords.speed && location.coords.speed > 0) {
@@ -343,12 +396,7 @@ const HomeScreen = () => {
           if (destination && isNavigating) {
             const now = Date.now();
             if (now - lastRerouteTimeRef.current > 5000) {
-              const offRoute = isUserOffRoute(
-                newCoords.latitude,
-                newCoords.longitude,
-                routeCoords
-              );
-
+              const offRoute = isUserOffRoute(newCoords.latitude, newCoords.longitude, routeCoords);
               if (offRoute) {
                 lastRerouteTimeRef.current = now;
                 fetchFastestRoute(
@@ -364,6 +412,13 @@ const HomeScreen = () => {
         }
       );
 
+      // Watch Compass / Orientation HP
+      await Location.watchHeadingAsync((headingData) => {
+        const heading = Math.round(headingData.trueHeading || headingData.magHeading || 0);
+        setDeviceHeading(heading);
+        postToWebMap({ type: 'UPDATE_HEADING', heading });
+      });
+
       let initialLoc = await Location.getCurrentPositionAsync({});
       postToWebMap({
         type: 'UPDATE_LOCATION',
@@ -372,34 +427,45 @@ const HomeScreen = () => {
       });
     } catch (err: any) {
       console.error('Location Error:', err);
-      setLocationErrorMsg('Gagal mengambil lokasi GPS.');
+      setLocationErrorMsg('Gagal mengakses GPS.');
     }
   };
 
-  // Handler Pencarian Lokasi
+  // 5. Fitur Pencarian Lokasi Akurat
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
 
-    if (query.length < 3) {
+    if (query.length < 2) {
       setSearchResults([]);
       return;
     }
 
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`
-        );
+        let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=6&addressdetails=1`;
+        if (currentLocation) {
+          url += `&lat=${currentLocation.latitude}&lon=${currentLocation.longitude}`;
+        }
+
+        const response = await fetch(url, {
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'PersonalMapsAI/1.0',
+          },
+        });
+
         const data = await response.json();
-        setSearchResults(data);
+        if (Array.isArray(data)) {
+          setSearchResults(data);
+        }
       } catch (error) {
-        console.error('Search error:', error);
+        console.error('Search API error:', error);
       }
-    }, 500);
+    }, 400);
   };
 
-  // Pilih Hasil Pencarian
+  // Pilih Lokasi Pencarian
   const handleSelectSearchResult = (result: any) => {
     setSearchQuery(result.display_name);
     setSearchResults([]);
@@ -421,6 +487,53 @@ const HomeScreen = () => {
         dest.longitude,
         routeMode
       );
+    }
+  };
+
+  // 6. Fitur Chip Kategori (Restoran, SPBU, Kafe, dll.)
+  const handleCategorySearch = (categoryName: string) => {
+    setSearchQuery(categoryName);
+    handleSearchChange(categoryName);
+  };
+
+  // 7. Fitur Pencarian Suara (Voice Search)
+  const handleVoiceSearch = () => {
+    if (Platform.OS === 'web' && (window as any).webkitSpeechRecognition) {
+      try {
+        const SpeechRecognition = (window as any).webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'id-ID';
+        recognition.start();
+
+        recognition.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          if (transcript) {
+            setSearchQuery(transcript);
+            handleSearchChange(transcript);
+          }
+        };
+      } catch (e) {
+        console.error('Speech recognition error:', e);
+      }
+    } else {
+      alert('Pencarian suara belum didukung di browser ini. Silakan ketik nama lokasi.');
+    }
+  };
+
+  // 8. Fitur Kamera (Ambil / Lampirkan Foto Tempat)
+  const handlePickLocationPhoto = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setSelectedPhotoUri(result.assets[0].uri);
+        setShowAddMarkerDialog(true);
+      }
+    } catch (err) {
+      console.error('Picker Error:', err);
     }
   };
 
@@ -465,7 +578,14 @@ const HomeScreen = () => {
     postToWebMap({ type: 'TOGGLE_LAYER', layer: nextSat ? 'satellite' : 'dark' });
   };
 
-  // Tambah Marker Baru
+  // Toggle Kompas Lock
+  const toggleCompassLock = () => {
+    const nextLock = !isHeadingLocked;
+    setIsHeadingLocked(nextLock);
+    centerMap();
+  };
+
+  // Simpan Marker Baru
   const handleConfirmAddMarker = () => {
     if (!currentLocation) return;
 
@@ -474,6 +594,7 @@ const HomeScreen = () => {
       latitude: currentLocation.latitude,
       longitude: currentLocation.longitude,
       title: markerTitleInput.trim() || 'Lokasi Saya',
+      photoUri: selectedPhotoUri || undefined,
     };
 
     setCustomMarkers((prev) => [...prev, newMarker]);
@@ -485,6 +606,7 @@ const HomeScreen = () => {
     });
 
     setMarkerTitleInput('');
+    setSelectedPhotoUri(null);
     setShowAddMarkerDialog(false);
   };
 
@@ -537,7 +659,12 @@ const HomeScreen = () => {
       {/* 2. TOP BAR SEARCH (GOOGLE MAPS STYLE) */}
       <View style={styles.topContainer}>
         <View style={styles.gmapsSearchBar}>
-          <IconButton icon="magnify" iconColor="#9aa0a6" size={24} onPress={() => {}} />
+          <IconButton
+            icon="magnify"
+            iconColor="#9aa0a6"
+            size={24}
+            onPress={() => handleSearchChange(searchQuery)}
+          />
           <Searchbar
             placeholder="Telusuri di sini"
             onChangeText={handleSearchChange}
@@ -547,38 +674,65 @@ const HomeScreen = () => {
             placeholderTextColor="#9aa0a6"
             elevation={0}
           />
-          <IconButton icon="microphone" iconColor="#8ab4f8" size={22} onPress={() => {}} />
-          <IconButton icon="camera-outline" iconColor="#8ab4f8" size={22} onPress={() => {}} />
-          <View style={styles.avatarCircle}>
+          <IconButton icon="microphone" iconColor="#8ab4f8" size={22} onPress={handleVoiceSearch} />
+          <IconButton icon="camera-outline" iconColor="#8ab4f8" size={22} onPress={handlePickLocationPhoto} />
+          <TouchableOpacity style={styles.avatarCircle} onPress={() => setShowProfileModal(true)}>
             <Text style={styles.avatarText}>M</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
+        {/* Kategori Fast Chips */}
         {searchResults.length === 0 && !destination && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScrollView}>
-            <Chip icon="food-fork-drink" style={styles.categoryChip} textStyle={styles.chipText}>
+            <Chip
+              icon="food-fork-drink"
+              style={styles.categoryChip}
+              textStyle={styles.chipText}
+              onPress={() => handleCategorySearch('Restoran')}
+            >
               Restoran
             </Chip>
-            <Chip icon="shopping-outline" style={styles.categoryChip} textStyle={styles.chipText}>
+            <Chip
+              icon="shopping-outline"
+              style={styles.categoryChip}
+              textStyle={styles.chipText}
+              onPress={() => handleCategorySearch('Belanja')}
+            >
               Belanja
             </Chip>
-            <Chip icon="bed-outline" style={styles.categoryChip} textStyle={styles.chipText}>
+            <Chip
+              icon="bed-outline"
+              style={styles.categoryChip}
+              textStyle={styles.chipText}
+              onPress={() => handleCategorySearch('Hotel')}
+            >
               Hotel
             </Chip>
-            <Chip icon="coffee-outline" style={styles.categoryChip} textStyle={styles.chipText}>
+            <Chip
+              icon="coffee-outline"
+              style={styles.categoryChip}
+              textStyle={styles.chipText}
+              onPress={() => handleCategorySearch('Kafe')}
+            >
               Kafe
             </Chip>
-            <Chip icon="gas-station-outline" style={styles.categoryChip} textStyle={styles.chipText}>
+            <Chip
+              icon="gas-station-outline"
+              style={styles.categoryChip}
+              textStyle={styles.chipText}
+              onPress={() => handleCategorySearch('SPBU')}
+            >
               SPBU
             </Chip>
           </ScrollView>
         )}
 
+        {/* Dropdown Hasil Pencarian Tempat */}
         {searchResults.length > 0 && (
           <View style={styles.searchResultsContainer}>
             <FlatList
               data={searchResults}
-              keyExtractor={(item) => item.place_id.toString()}
+              keyExtractor={(item, idx) => item.place_id?.toString() || idx.toString()}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.searchResultItem}
@@ -595,7 +749,7 @@ const HomeScreen = () => {
         )}
       </View>
 
-      {/* 3. SPEEDOMETER */}
+      {/* 3. SPEEDOMETER & COMPASS ANGLE */}
       {speed !== null && (
         <View style={styles.speedometerContainer}>
           <Text style={[styles.speedText, speed > 60 && styles.speedWarning]}>{speed}</Text>
@@ -603,9 +757,9 @@ const HomeScreen = () => {
         </View>
       )}
 
-      {/* 4. FAB CONTROLS (LAYER, TAMBAH MARKER, CENTER GPS) */}
+      {/* 4. FAB CONTROLS (LAYER, TAMBAH MARKER, KOMPAS, GPS) */}
       <View style={styles.rightControlsContainer}>
-        {/* Tombol Toggle Layer */}
+        {/* Toggle Layer Satelit */}
         <FAB
           icon={isSatellite ? 'map-outline' : 'layers-outline'}
           style={styles.controlFab}
@@ -613,7 +767,15 @@ const HomeScreen = () => {
           size="small"
           onPress={toggleLayer}
         />
-        {/* Tombol Tambah Pin Marker */}
+        {/* Toggle Kunci Kompas Arah HP */}
+        <FAB
+          icon="compass-outline"
+          style={[styles.controlFab, isHeadingLocked && { backgroundColor: '#1a73e8' }]}
+          color={isHeadingLocked ? '#ffffff' : '#8ab4f8'}
+          size="small"
+          onPress={toggleCompassLock}
+        />
+        {/* Tambah Pin Marker */}
         <FAB
           icon="plus"
           style={styles.controlFab}
@@ -621,7 +783,7 @@ const HomeScreen = () => {
           size="small"
           onPress={() => setShowAddMarkerDialog(true)}
         />
-        {/* Tombol Center GPS */}
+        {/* Center GPS */}
         <FAB
           icon="crosshairs-gps"
           style={styles.controlFab}
@@ -700,10 +862,10 @@ const HomeScreen = () => {
         </View>
       )}
 
-      {/* Dialog Tambah Marker */}
+      {/* Dialog Tambah Marker / Foto */}
       <Portal>
         <Dialog visible={showAddMarkerDialog} onDismiss={() => setShowAddMarkerDialog(false)}>
-          <Dialog.Title>Tambah Pin Marker</Dialog.Title>
+          <Dialog.Title>Tambah Pin Marker Baru</Dialog.Title>
           <Dialog.Content>
             <TextInput
               label="Nama Tempat / Catatan"
@@ -711,19 +873,43 @@ const HomeScreen = () => {
               onChangeText={setMarkerTitleInput}
               mode="outlined"
             />
+            {selectedPhotoUri && (
+              <Text variant="bodySmall" style={{ color: '#34a853', marginTop: 8 }}>
+                📷 Foto terlampir
+              </Text>
+            )}
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={() => setShowAddMarkerDialog(false)}>Batal</Button>
-            <Button onPress={handleConfirmAddMarker}>Simpan</Button>
+            <Button onPress={handleConfirmAddMarker}>Simpan Marker</Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>
 
-      {/* Banner GPS Alert */}
+      {/* Dialog Profil Ringkas */}
+      <Portal>
+        <Dialog visible={showProfileModal} onDismiss={() => setShowProfileModal(false)}>
+          <Dialog.Title>Profil Pengguna</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium">Mako Maps AI - Status GPS Aktif</Text>
+            {currentLocation && (
+              <Text variant="bodySmall" style={{ marginTop: 8, color: '#94a3b8' }}>
+                Koordinat: {currentLocation.latitude.toFixed(5)}, {currentLocation.longitude.toFixed(5)}
+                {'\n'}Sudut HP: {deviceHeading}°
+              </Text>
+            )}
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setShowProfileModal(false)}>Tutup</Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
+      {/* Banner Peringatan GPS */}
       {locationErrorMsg && (
         <Banner
           visible={true}
-          actions={[{ label: 'Nyalakan', onPress: requestLocation }]}
+          actions={[{ label: 'Nyalakan GPS', onPress: requestLocation }]}
           icon="crosshairs-gps"
           style={styles.bannerAlert}
         >
@@ -731,13 +917,13 @@ const HomeScreen = () => {
         </Banner>
       )}
 
-      {/* Dialog Permission */}
+      {/* Dialog Permission GPS */}
       <Portal>
         <Dialog visible={showPermissionDialog} onDismiss={() => setShowPermissionDialog(false)}>
           <Dialog.Title>Izin Lokasi & GPS Diperlukan</Dialog.Title>
           <Dialog.Content>
             <Text variant="bodyMedium">
-              Aplikasi memerlukan GPS untuk menentukan lokasi dan pencarian rute tercepat secara real-time.
+              Aplikasi memerlukan GPS dan Kompas untuk menentukan lokasi serta navigasi rute tercepat secara real-time.
             </Text>
           </Dialog.Content>
           <Dialog.Actions>
@@ -755,14 +941,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#171d2d',
   },
   map: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   topContainer: {
     position: 'absolute',
     top: Platform.OS === 'web' ? 15 : 45,
     left: 14,
     right: 14,
-    zIndex: 10,
+    zIndex: 2000,
   },
   gmapsSearchBar: {
     flexDirection: 'row',
@@ -818,6 +1004,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     maxHeight: 220,
     paddingVertical: 4,
+    elevation: 10,
+    zIndex: 2001,
   },
   searchResultItem: {
     flexDirection: 'row',
