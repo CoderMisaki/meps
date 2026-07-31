@@ -22,7 +22,6 @@ import {
 } from 'react-native-paper';
 import { useAppStore } from '../store';
 import * as Location from 'expo-location';
-import { startLocationTracking, stopLocationTracking } from '../services/location';
 import { useKeepAwake } from 'expo-keep-awake';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -52,7 +51,7 @@ interface CustomMarker {
   title: string;
 }
 
-// Template HTML Peta Web (Leaflet) + PostMessage Communication (Bebas Flicker & Full Interactive)
+// Template HTML Peta Web (Leaflet) + PostMessage Communication
 const WEB_MAP_HTML = `
 <!DOCTYPE html>
 <html>
@@ -107,7 +106,7 @@ const WEB_MAP_HTML = `
         var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (!data || !data.type) return;
 
-        // 1. Update Lokasi Pengguna
+        // Update Lokasi Pengguna
         if (data.type === 'UPDATE_LOCATION') {
           var lat = data.latitude;
           var lng = data.longitude;
@@ -120,7 +119,7 @@ const WEB_MAP_HTML = `
           }
         }
 
-        // 2. Set Titik Tujuan
+        // Set Titik Tujuan
         if (data.type === 'SET_DESTINATION') {
           if (destMarker) map.removeLayer(destMarker);
           if (data.destination) {
@@ -129,7 +128,7 @@ const WEB_MAP_HTML = `
           }
         }
 
-        // 3. Gambar Garis Rute (Polyline)
+        // Gambar Garis Rute (Polyline)
         if (data.type === 'SET_ROUTE') {
           if (routePolyline) map.removeLayer(routePolyline);
           if (data.coordinates && data.coordinates.length > 0) {
@@ -139,14 +138,14 @@ const WEB_MAP_HTML = `
           }
         }
 
-        // 4. Center Map GPS
+        // Center Map GPS
         if (data.type === 'CENTER_MAP') {
           if (data.latitude && data.longitude) {
             map.flyTo([data.latitude, data.longitude], 16, { animate: true, duration: 1 });
           }
         }
 
-        // 5. Toggle Layer Peta (Satelit vs Normal)
+        // Toggle Layer Peta (Satelit vs Normal)
         if (data.type === 'TOGGLE_LAYER') {
           if (data.layer === 'satellite') {
             if (map.hasLayer(darkLayer)) map.removeLayer(darkLayer);
@@ -157,7 +156,7 @@ const WEB_MAP_HTML = `
           }
         }
 
-        // 6. Tambah Marker Baru
+        // Tambah Marker Baru
         if (data.type === 'ADD_MARKER') {
           var pinIcon = L.divIcon({ className: 'custom-pin', iconSize: [18, 18], iconAnchor: [9, 9] });
           var m = L.marker([data.latitude, data.longitude], { icon: pinIcon });
@@ -207,7 +206,7 @@ const HomeScreen = () => {
     }
   };
 
-  // 1. Jarak Haversine (Meter)
+  // Jarak Haversine (Meter)
   const calculateDistanceMeters = (
     lat1: number,
     lon1: number,
@@ -228,7 +227,7 @@ const HomeScreen = () => {
     return R * c;
   };
 
-  // 2. Deteksi keluar rute (> 35 meter)
+  // Deteksi keluar rute (> 35 meter)
   const isUserOffRoute = (
     userLat: number,
     userLng: number,
@@ -247,7 +246,7 @@ const HomeScreen = () => {
     return minDistance > thresholdMeters;
   };
 
-  // 3. API Fetch Rute Tercepat OSRM Engine
+  // API Fetch Rute Tercepat OSRM Engine
   const fetchFastestRoute = async (
     startLat: number,
     startLng: number,
@@ -259,7 +258,7 @@ const HomeScreen = () => {
       let osrmProfile = 'driving';
       if (mode === 'foot') osrmProfile = 'foot';
 
-      const url = `https://router.project-osrm.org/route/v1/\${osrmProfile}/\${startLng},\${startLat};\${destLng},\${destLat}?overview=full&geometries=geojson`;
+      const url = `https://router.project-osrm.org/route/v1/${osrmProfile}/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`;
 
       const response = await fetch(url);
       const data = await response.json();
@@ -276,8 +275,8 @@ const HomeScreen = () => {
         const distKm = (primaryRoute.distance / 1000).toFixed(1);
         const durationMins = Math.round(primaryRoute.duration / 60);
         setRouteInfo({
-          distance: `\${distKm} km`,
-          duration: `\${durationMins} mnt`,
+          distance: `${distKm} km`,
+          duration: `${durationMins} mnt`,
         });
 
         postToWebMap({ type: 'SET_ROUTE', coordinates });
@@ -390,7 +389,7 @@ const HomeScreen = () => {
     searchTimeoutRef.current = setTimeout(async () => {
       try {
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?q=\${encodeURIComponent(query)}&format=json&limit=5`
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`
         );
         const data = await response.json();
         setSearchResults(data);
@@ -439,9 +438,7 @@ const HomeScreen = () => {
     }
   };
 
-  // --- FITUR AAKSI FAB (YANG SEBELUMNYA TIDAK BERFUNGSI) ---
-
-  // 1. Center GPS
+  // Center GPS
   const centerMap = () => {
     if (!currentLocation) {
       requestLocation();
@@ -461,14 +458,14 @@ const HomeScreen = () => {
     }
   };
 
-  // 2. Toggle Layer Satelit / Normal
+  // Toggle Layer Satelit / Normal
   const toggleLayer = () => {
     const nextSat = !isSatellite;
     setIsSatellite(nextSat);
     postToWebMap({ type: 'TOGGLE_LAYER', layer: nextSat ? 'satellite' : 'dark' });
   };
 
-  // 3. Tambah Marker Baru
+  // Tambah Marker Baru
   const handleConfirmAddMarker = () => {
     if (!currentLocation) return;
 
@@ -758,7 +755,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#171d2d',
   },
   map: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
   },
   topContainer: {
     position: 'absolute',
