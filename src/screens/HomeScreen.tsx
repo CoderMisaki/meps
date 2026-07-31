@@ -37,6 +37,26 @@ if (Platform.OS !== 'web') {
   Marker = Maps.Marker;
 }
 
+// Gaya Peta Gelap (Dark Mode Google Maps Style)
+const mapDarkStyle = [
+  { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#263c3f" }] },
+  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#6b9a76" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#746855" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2835" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3d19c" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
+  { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] }
+];
+
 type RouteMode = 'driving' | 'motorcycle' | 'foot';
 
 interface Destination {
@@ -53,7 +73,7 @@ interface CustomMarker {
   photoUri?: string;
 }
 
-// Template HTML Peta Web (Leaflet) + Compass Heading Arrow Marker
+// Template HTML Peta Web (Leaflet)
 const WEB_MAP_HTML = `
 <!DOCTYPE html>
 <html>
@@ -64,68 +84,24 @@ const WEB_MAP_HTML = `
   <style>
     html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; background-color: #171d2d; }
     .leaflet-control-attribution { display: none !important; }
-
-    /* User Heading Marker dengan Panah Arah */
-    .user-heading-container {
-      position: relative;
-      width: 40px;
-      height: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .user-heading-arrow {
-      position: absolute;
-      width: 0;
-      height: 0;
-      border-left: 9px solid transparent;
-      border-right: 9px solid transparent;
-      border-bottom: 18px solid #38b6ff;
-      top: 0px;
-      filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));
-      transition: transform 0.2s ease-out;
-    }
-    .user-dot {
-      width: 16px;
-      height: 16px;
-      background-color: #1a73e8;
-      border: 3px solid #ffffff;
-      border-radius: 50%;
-      box-shadow: 0 0 10px rgba(26,115,232,0.9);
-      z-index: 2;
-    }
-
-    .dest-marker {
-      background-color: #ea4335;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      border: 3px solid #ffffff;
-      box-shadow: 0 0 10px rgba(234,67,53,0.8);
-    }
-    .custom-pin {
-      background-color: #fbbc04;
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      border: 2px solid #ffffff;
-      box-shadow: 0 0 8px rgba(0,0,0,0.5);
-    }
+    .user-heading-container { position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+    .user-heading-arrow { position: absolute; width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; border-bottom: 18px solid #38b6ff; top: 0px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5)); transition: transform 0.2s ease-out; }
+    .user-dot { width: 16px; height: 16px; background-color: #1a73e8; border: 3px solid #ffffff; border-radius: 50%; box-shadow: 0 0 10px rgba(26,115,232,0.9); z-index: 2; }
+    .dest-marker { background-color: #ea4335; width: 20px; height: 20px; border-radius: 50%; border: 3px solid #ffffff; box-shadow: 0 0 10px rgba(234,67,53,0.8); }
+    .custom-pin { background-color: #fbbc04; width: 18px; height: 18px; border-radius: 50%; border: 2px solid #ffffff; box-shadow: 0 0 8px rgba(0,0,0,0.5); }
   </style>
 </head>
 <body>
   <div id="map"></div>
   <script>
-    var map = L.map('map', {
-      zoomControl: false,
-      dragging: true,
-      touchZoom: true,
-      doubleClickZoom: true,
-      scrollWheelZoom: true
-    }).setView([-6.2088, 106.8456], 15);
+    var map = L.map('map', { zoomControl: false }).setView([-6.2088, 106.8456], 15);
 
-    var darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+    var lightLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 });
+    var darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 });
     var satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+
+    // Default Layer
+    lightLayer.addTo(map);
 
     var userMarker = null;
     var destMarker = null;
@@ -150,7 +126,17 @@ const WEB_MAP_HTML = `
         var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (!data || !data.type) return;
 
-        // 1. Update Lokasi & Heading Pengguna
+        if (data.type === 'SET_THEME') {
+          map.eachLayer(function(layer) {
+            if (layer !== customMarkersGroup && layer !== routePolyline && layer !== userMarker && layer !== destMarker) {
+                map.removeLayer(layer);
+            }
+          });
+          if (data.isSatellite) satLayer.addTo(map);
+          else if (data.isDark) darkLayer.addTo(map);
+          else lightLayer.addTo(map);
+        }
+
         if (data.type === 'UPDATE_LOCATION') {
           var lat = data.latitude;
           var lng = data.longitude;
@@ -165,15 +151,11 @@ const WEB_MAP_HTML = `
           }
         }
 
-        // 2. Update Rotasi Panah Heading
         if (data.type === 'UPDATE_HEADING') {
           currentHeading = data.heading || 0;
-          if (userMarker) {
-            userMarker.setIcon(createUserHeadingIcon(currentHeading));
-          }
+          if (userMarker) userMarker.setIcon(createUserHeadingIcon(currentHeading));
         }
 
-        // 3. Set Titik Tujuan
         if (data.type === 'SET_DESTINATION') {
           if (destMarker) map.removeLayer(destMarker);
           if (data.destination) {
@@ -183,7 +165,6 @@ const WEB_MAP_HTML = `
           }
         }
 
-        // 4. Gambar Garis Rute (Polyline)
         if (data.type === 'SET_ROUTE') {
           if (routePolyline) map.removeLayer(routePolyline);
           if (data.coordinates && data.coordinates.length > 0) {
@@ -193,32 +174,23 @@ const WEB_MAP_HTML = `
           }
         }
 
-        // 5. Center Map GPS
+        if (data.type === 'CLEAR_ROUTE') {
+          if (routePolyline) map.removeLayer(routePolyline);
+          if (destMarker) map.removeLayer(destMarker);
+        }
+
         if (data.type === 'CENTER_MAP') {
           if (data.latitude && data.longitude) {
-            map.flyTo([data.latitude, data.longitude], 17, { animate: true, duration: 1 });
+            map.flyTo([data.latitude, data.longitude], data.zoom || 17, { animate: true, duration: 1 });
           }
         }
 
-        // 6. Fit Bounds (Tinjauan Rute Lengkap)
         if (data.type === 'FIT_BOUNDS') {
           if (routePolyline) {
             map.fitBounds(routePolyline.getBounds(), { padding: [60, 60] });
           }
         }
 
-        // 7. Toggle Layer Peta
-        if (data.type === 'TOGGLE_LAYER') {
-          if (data.layer === 'satellite') {
-            if (map.hasLayer(darkLayer)) map.removeLayer(darkLayer);
-            satLayer.addTo(map);
-          } else {
-            if (map.hasLayer(satLayer)) map.removeLayer(satLayer);
-            darkLayer.addTo(map);
-          }
-        }
-
-        // 8. Tambah Marker Kustom
         if (data.type === 'ADD_MARKER') {
           var pinIcon = L.divIcon({ className: 'custom-pin', iconSize: [18, 18], iconAnchor: [9, 9] });
           var m = L.marker([data.latitude, data.longitude], { icon: pinIcon });
@@ -234,7 +206,7 @@ const WEB_MAP_HTML = `
   </script>
 </body>
 </html>
-`;
+\`;
 
 const HomeScreen = () => {
   const theme = useTheme();
@@ -242,7 +214,10 @@ const HomeScreen = () => {
   const mapRef = useRef<any>(null);
   const iframeRef = useRef<any>(null);
 
-  const { currentLocation, setCurrentLocation } = useAppStore();
+  // Tema Store
+  const { currentLocation, setCurrentLocation, settings } = useAppStore();
+  const isDarkMode = settings?.darkMode ?? false;
+
   const [searchQuery, setSearchQuery] = useState('');
   const [locationErrorMsg, setLocationErrorMsg] = useState<string | null>(null);
   const [showPermissionDialog, setShowPermissionDialog] = useState(false);
@@ -255,9 +230,10 @@ const HomeScreen = () => {
   const [routeMode, setRouteMode] = useState<RouteMode>('motorcycle');
   const [routeCoords, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
   const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
+
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isOverview, setIsOverview] = useState(false);
   const [isSatellite, setIsSatellite] = useState(false);
-  const [isHeadingLocked, setIsHeadingLocked] = useState(false);
 
   // Marker State
   const [customMarkers, setCustomMarkers] = useState<CustomMarker[]>([]);
@@ -267,13 +243,38 @@ const HomeScreen = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastRerouteTimeRef = useRef<number>(0);
 
   const postToWebMap = (data: object) => {
     if (Platform.OS === 'web' && iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(JSON.stringify(data), '*');
     }
   };
+
+  // Terapkan Tema ke Leaflet saat load/berubah
+  useEffect(() => {
+    postToWebMap({ type: 'SET_THEME', isDark: isDarkMode, isSatellite });
+  }, [isDarkMode, isSatellite]);
+
+  // Efek Navigasi - Kamera Berputar Otomatis (Follow Mode)
+  useEffect(() => {
+    if (isNavigating && !isOverview && currentLocation) {
+      if (Platform.OS !== 'web' && mapRef.current?.animateCamera) {
+        mapRef.current.animateCamera({
+          center: currentLocation,
+          pitch: 60,               // Miring ala navigasi
+          heading: deviceHeading,  // Putar map mengikuti arah HP
+          zoom: 18                 // Zoom dekat
+        }, { duration: 800 });
+      } else {
+        postToWebMap({
+          type: 'CENTER_MAP',
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          zoom: 18
+        });
+      }
+    }
+  }, [currentLocation, deviceHeading, isNavigating, isOverview]);
 
   const fetchFastestRoute = async (
     startLat: number,
@@ -286,7 +287,7 @@ const HomeScreen = () => {
       let osrmProfile = 'driving';
       if (mode === 'foot') osrmProfile = 'foot';
 
-      const url = `https://router.project-osrm.org/route/v1/${osrmProfile}/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`;
+      const url = \`https://router.project-osrm.org/route/v1/\${osrmProfile}/\${startLng},\${startLat};\${destLng},\${destLat}?overview=full&geometries=geojson\`;
 
       const response = await fetch(url);
       const data = await response.json();
@@ -303,8 +304,8 @@ const HomeScreen = () => {
         const distKm = (primaryRoute.distance / 1000).toFixed(1);
         const durationMins = Math.round(primaryRoute.duration / 60);
         setRouteInfo({
-          distance: `${distKm} km`,
-          duration: `${durationMins} mnt`,
+          distance: \`\${distKm} km\`,
+          duration: \`\${durationMins} mnt\`,
         });
 
         postToWebMap({ type: 'SET_ROUTE', coordinates });
@@ -351,7 +352,6 @@ const HomeScreen = () => {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
           };
-
           setCurrentLocation(newCoords);
 
           postToWebMap({
@@ -398,9 +398,9 @@ const HomeScreen = () => {
 
     searchTimeoutRef.current = setTimeout(async () => {
       try {
-        let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=6&addressdetails=1`;
+        let url = \`https://nominatim.openstreetmap.org/search?q=\${encodeURIComponent(query)}&format=json&limit=6&addressdetails=1\`;
         if (currentLocation) {
-          url += `&lat=${currentLocation.latitude}&lon=${currentLocation.longitude}`;
+          url += \`&lat=\${currentLocation.latitude}&lon=\${currentLocation.longitude}\`;
         }
 
         const response = await fetch(url, {
@@ -501,34 +501,71 @@ const HomeScreen = () => {
     }
   };
 
-  // Fitur "Ke Tengah"
+  // Mulai Mode Navigasi
+  const startNavigation = () => {
+    setIsNavigating(true);
+    setIsOverview(false);
+  };
+
+  // Fitur "Ke Tengah" (Kembali mengunci kamera ke user)
   const centerMap = () => {
     if (!currentLocation) {
       requestLocation();
       return;
     }
+
+    setIsOverview(false); // Mengaktifkan Auto-Follow Navigasi
+
     postToWebMap({
       type: 'CENTER_MAP',
       latitude: currentLocation.latitude,
       longitude: currentLocation.longitude,
+      zoom: isNavigating ? 18 : 15
     });
-    if (Platform.OS !== 'web' && mapRef.current?.animateToRegion) {
-      mapRef.current.animateToRegion({
-        ...currentLocation,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      });
+
+    if (Platform.OS !== 'web' && mapRef.current?.animateCamera) {
+      mapRef.current.animateCamera({
+        center: currentLocation,
+        heading: isNavigating ? deviceHeading : 0,
+        pitch: isNavigating ? 60 : 0,
+        zoom: isNavigating ? 18 : 15,
+      }, { duration: 800 });
     }
   };
 
-  // Fitur "Tinjauan"
+  // Fitur "Tinjauan" (Melihat Keseluruhan Rute)
   const handleOverviewRoute = () => {
+    setIsOverview(true); // Mematikan Auto-Follow
     postToWebMap({ type: 'FIT_BOUNDS' });
     if (Platform.OS !== 'web' && mapRef.current && routeCoords.length > 0) {
       mapRef.current.fitToCoordinates(routeCoords, {
-        edgePadding: { top: 100, right: 60, bottom: 220, left: 60 },
+        edgePadding: { top: 120, right: 60, bottom: 220, left: 60 },
         animated: true,
       });
+      // Mengembalikan pitch (tilt) ke 0 agar map terlihat flat dari atas
+      mapRef.current.animateCamera({ pitch: 0, heading: 0 });
+    }
+  };
+
+  // Selesai / X Navigasi - Menghilangkan kotak tujuan
+  const stopNavigation = () => {
+    setIsNavigating(false);
+    setIsOverview(false);
+    setDestination(null); // Ini yang menghilangkan kotak spam
+    setRouteCoordinates([]);
+    setRouteInfo(null);
+    setSearchQuery('');
+
+    postToWebMap({ type: 'CLEAR_ROUTE' });
+
+    // Kembalikan Kamera map ke flat view default
+    if (Platform.OS !== 'web' && mapRef.current?.animateCamera && currentLocation) {
+      mapRef.current.animateCamera({
+        center: currentLocation,
+        pitch: 0,
+        heading: 0,
+        zoom: 15
+      }, { duration: 800 });
     }
   };
 
@@ -540,7 +577,6 @@ const HomeScreen = () => {
 
   const handleConfirmAddMarker = () => {
     if (!currentLocation) return;
-
     const newMarker: CustomMarker = {
       id: Date.now().toString(),
       latitude: currentLocation.latitude,
@@ -548,7 +584,6 @@ const HomeScreen = () => {
       title: markerTitleInput.trim() || 'Lokasi Saya',
       photoUri: selectedPhotoUri || undefined,
     };
-
     setCustomMarkers((prev) => [...prev, newMarker]);
     postToWebMap({
       type: 'ADD_MARKER',
@@ -556,7 +591,6 @@ const HomeScreen = () => {
       longitude: newMarker.longitude,
       title: newMarker.title,
     });
-
     setMarkerTitleInput('');
     setSelectedPhotoUri(null);
     setShowAddMarkerDialog(false);
@@ -582,10 +616,19 @@ const HomeScreen = () => {
         <MapView
           ref={mapRef}
           style={styles.map}
-          mapType={isSatellite ? 'satellite' : 'normal'}
+          mapType={isSatellite ? 'satellite' : 'standard'}
+          customMapStyle={isDarkMode ? mapDarkStyle : []}
           showsUserLocation
           showsCompass={false}
           showsMyLocationButton={false}
+          pitchEnabled={true}
+          rotateEnabled={true}
+          // Jika user menggeser map saat navigasi, lepaskan kamera dari user (Masuk Mode Tinjauan/Overview)
+          onPanDrag={() => {
+            if (isNavigating && !isOverview) {
+              setIsOverview(true);
+            }
+          }}
         >
           {destination && (
             <Marker
@@ -603,20 +646,19 @@ const HomeScreen = () => {
             />
           ))}
           {routeCoords.length > 0 && (
-            <Polyline coordinates={routeCoords} strokeWidth={5} strokeColor="#38b6ff" />
+            <Polyline coordinates={routeCoords} strokeWidth={6} strokeColor="#38b6ff" />
           )}
         </MapView>
       )}
 
-      {/* 2. OVERLAY HEADER / SEARCH BAR (pointerEvents="box-none") */}
+      {/* 2. OVERLAY HEADER / SEARCH BAR */}
       <View style={styles.topContainer} pointerEvents="box-none">
         {!isNavigating ? (
-          /* Tampilan Normal: Search Bar & Hamburger */
           <>
             <View style={styles.gmapsSearchBar}>
               <IconButton
                 icon="menu"
-                iconColor="#ffffff"
+                iconColor={isDarkMode ? '#ffffff' : '#1e2638'}
                 size={22}
                 onPress={() => setShowProfileModal(true)}
               />
@@ -625,17 +667,17 @@ const HomeScreen = () => {
                 onChangeText={handleSearchChange}
                 value={searchQuery}
                 style={styles.innerSearchInput}
-                inputStyle={styles.searchInputText}
+                inputStyle={[styles.searchInputText, { color: isDarkMode ? '#ffffff' : '#1e2638' }]}
                 placeholderTextColor="#9aa0a6"
                 elevation={0}
               />
-              <IconButton icon="microphone" iconColor="#ffffff" size={22} onPress={handleVoiceSearch} />
-              <IconButton icon="camera-outline" iconColor="#ffffff" size={22} onPress={handlePickLocationPhoto} />
+              <IconButton icon="microphone" iconColor={isDarkMode ? '#ffffff' : '#1e2638'} size={22} onPress={handleVoiceSearch} />
+              <IconButton icon="camera-outline" iconColor={isDarkMode ? '#ffffff' : '#1e2638'} size={22} onPress={handlePickLocationPhoto} />
             </View>
 
             {/* Chips Kategori */}
             {searchResults.length === 0 && !destination && (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScrollView}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScrollView} pointerEvents="box-none">
                 <Chip icon="home" style={styles.categoryChip} textStyle={styles.chipText} onPress={() => handleCategorySearch('Rumah')}>
                   Rumah
                 </Chip>
@@ -643,7 +685,7 @@ const HomeScreen = () => {
                   Kantor
                 </Chip>
                 <Chip icon="bookmark" style={styles.categoryChip} textStyle={styles.chipText} onPress={() => handleCategorySearch('Saved')}>
-                  Silat
+                  Tersimpan
                 </Chip>
               </ScrollView>
             )}
@@ -653,6 +695,7 @@ const HomeScreen = () => {
               <View style={styles.searchResultsContainer}>
                 <FlatList
                   data={searchResults}
+                  keyboardShouldPersistTaps="handled"
                   keyExtractor={(item, idx) => item.place_id?.toString() || idx.toString()}
                   renderItem={({ item }) => (
                     <TouchableOpacity
@@ -660,7 +703,7 @@ const HomeScreen = () => {
                       onPress={() => handleSelectSearchResult(item)}
                     >
                       <MaterialCommunityIcons name="map-marker-outline" size={20} color="#8ab4f8" />
-                      <Text style={styles.searchResultText} numberOfLines={2}>
+                      <Text style={[styles.searchResultText, { color: isDarkMode ? '#e2e8f0' : '#1e2638' }]} numberOfLines={2}>
                         {item.display_name}
                       </Text>
                     </TouchableOpacity>
@@ -670,16 +713,16 @@ const HomeScreen = () => {
             )}
           </>
         ) : (
-          /* Tampilan Mode Navigasi / Mode Berangkat (Banner Atas) */
+          /* Tampilan Navigasi Aktif (Mode Berangkat) - Banner Atas Arah Jalan */
           <View style={styles.navBannerTop}>
             <MaterialCommunityIcons name="arrow-top-right" size={38} color="#ffffff" style={styles.navTurnIcon} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.navDistanceText}>0 m</Text>
+              <Text style={styles.navDistanceText}>Ikuti Rute</Text>
               <Text style={styles.navRoadNameText} numberOfLines={1}>
-                {destination?.title || 'Menceng Raya'}
+                Menuju {destination?.title || 'Tujuan'}
               </Text>
             </View>
-            <IconButton icon="close" iconColor="#ffffff" size={24} onPress={() => setIsNavigating(false)} />
+            <IconButton icon="close" iconColor="#ffffff" size={26} onPress={stopNavigation} />
           </View>
         )}
       </View>
@@ -687,13 +730,17 @@ const HomeScreen = () => {
       {/* 3. TOMBOL KOMPAS FLOATING (Kiri Atas) */}
       <View style={styles.leftCompassContainer} pointerEvents="box-none">
         <TouchableOpacity style={styles.compassButton} onPress={centerMap}>
-          <MaterialCommunityIcons name="compass" size={26} color="#38b6ff" />
+          <MaterialCommunityIcons
+             name={isNavigating && !isOverview ? "compass-outline" : "compass"}
+             size={26}
+             color={isNavigating && !isOverview ? "#38b6ff" : (isDarkMode ? "#ffffff" : "#000000")}
+          />
         </TouchableOpacity>
       </View>
 
       {/* 4. SPEEDOMETER */}
-      {speed !== null && !isNavigating && (
-        <View style={styles.speedometerContainer}>
+      {speed !== null && (
+        <View style={styles.speedometerContainer} pointerEvents="none">
           <Text style={styles.speedText}>{speed}</Text>
           <Text style={styles.speedUnit}>km/h</Text>
         </View>
@@ -704,50 +751,50 @@ const HomeScreen = () => {
         <View style={styles.rightControlsContainer} pointerEvents="box-none">
           <FAB
             icon={isSatellite ? 'map-outline' : 'layers-outline'}
-            style={styles.controlFab}
-            color="#8ab4f8"
+            style={[styles.controlFab, { backgroundColor: isDarkMode ? '#1e2638' : '#ffffff' }]}
+            color={isDarkMode ? '#8ab4f8' : '#1a73e8'}
             size="small"
             onPress={toggleLayer}
           />
           <FAB
             icon="plus"
-            style={styles.controlFab}
-            color="#8ab4f8"
+            style={[styles.controlFab, { backgroundColor: isDarkMode ? '#1e2638' : '#ffffff' }]}
+            color={isDarkMode ? '#8ab4f8' : '#1a73e8'}
             size="small"
             onPress={() => setShowAddMarkerDialog(true)}
           />
           <FAB
             icon="crosshairs-gps"
-            style={styles.controlFab}
-            color="#8ab4f8"
+            style={[styles.controlFab, { backgroundColor: isDarkMode ? '#1e2638' : '#ffffff' }]}
+            color={isDarkMode ? '#8ab4f8' : '#1a73e8'}
             size="small"
             onPress={centerMap}
           />
         </View>
       )}
 
-      {/* 6. BOTTOM PANEL (PRE-NAVIGASI / MODE BERANGKAT) */}
+      {/* 6. BOTTOM PANEL */}
       <View style={styles.bottomContainer} pointerEvents="box-none">
         {/* State A: Pilihan Rute Sebelum Berangkat */}
         {destination && !isNavigating && (
-          <View style={styles.routePanelContainer}>
+          <View style={[styles.routePanelContainer, { backgroundColor: isDarkMode ? '#1e2638' : '#ffffff' }]}>
             <View style={styles.modeSelectorRow}>
               <TouchableOpacity
-                style={[styles.modeButton, routeMode === 'motorcycle' && styles.modeButtonActive]}
+                style={[styles.modeButton, routeMode === 'motorcycle' && styles.modeButtonActive, { backgroundColor: routeMode !== 'motorcycle' && !isDarkMode ? '#f1f5f9' : undefined }]}
                 onPress={() => handleModeChange('motorcycle')}
               >
                 <MaterialCommunityIcons name="motorbike" size={20} color={routeMode === 'motorcycle' ? '#ffffff' : '#8ab4f8'} />
                 <Text style={[styles.modeText, routeMode === 'motorcycle' && styles.modeTextActive]}>Motor</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modeButton, routeMode === 'driving' && styles.modeButtonActive]}
+                style={[styles.modeButton, routeMode === 'driving' && styles.modeButtonActive, { backgroundColor: routeMode !== 'driving' && !isDarkMode ? '#f1f5f9' : undefined }]}
                 onPress={() => handleModeChange('driving')}
               >
                 <MaterialCommunityIcons name="car" size={20} color={routeMode === 'driving' ? '#ffffff' : '#8ab4f8'} />
                 <Text style={[styles.modeText, routeMode === 'driving' && styles.modeTextActive]}>Mobil</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modeButton, routeMode === 'foot' && styles.modeButtonActive]}
+                style={[styles.modeButton, routeMode === 'foot' && styles.modeButtonActive, { backgroundColor: routeMode !== 'foot' && !isDarkMode ? '#f1f5f9' : undefined }]}
                 onPress={() => handleModeChange('foot')}
               >
                 <MaterialCommunityIcons name="walk" size={20} color={routeMode === 'foot' ? '#ffffff' : '#8ab4f8'} />
@@ -766,7 +813,7 @@ const HomeScreen = () => {
                   buttonColor="#1a73e8"
                   textColor="#ffffff"
                   style={styles.startNavButton}
-                  onPress={() => setIsNavigating(true)}
+                  onPress={startNavigation}
                 >
                   Mulai
                 </Button>
@@ -775,7 +822,7 @@ const HomeScreen = () => {
           </View>
         )}
 
-        {/* State B: UI Navigasi Aktif / "Mode Berangkat" (Sesuai Gambar Referensi) */}
+        {/* State B: UI Navigasi Aktif / "Mode Berangkat" (Fokus) */}
         {isNavigating && (
           <View style={styles.navBarBottom}>
             <TouchableOpacity style={styles.recenterNavSection} onPress={centerMap}>
@@ -785,7 +832,7 @@ const HomeScreen = () => {
               <View style={{ marginLeft: 12 }}>
                 <Text style={styles.recenterTitleText}>Ke tengah</Text>
                 <Text style={styles.recenterSubText}>
-                  {routeInfo ? `${routeInfo.duration} • ${routeInfo.distance}` : '19 menit • 5.5 km'}
+                  {routeInfo ? \`\${routeInfo.duration} • \${routeInfo.distance}\` : 'Mengkalkulasi...'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -823,13 +870,13 @@ const HomeScreen = () => {
 
       <Portal>
         <Dialog visible={showProfileModal} onDismiss={() => setShowProfileModal(false)}>
-          <Dialog.Title>Pengaturan Navigasi</Dialog.Title>
+          <Dialog.Title>Pengaturan GPS</Dialog.Title>
           <Dialog.Content>
-            <Text variant="bodyMedium">Personal Maps AI - Status GPS Aktif</Text>
+            <Text variant="bodyMedium">Aplikasi mendeteksi lokasi real-time.</Text>
             {currentLocation && (
               <Text variant="bodySmall" style={{ marginTop: 8, color: '#94a3b8' }}>
                 Koordinat: {currentLocation.latitude.toFixed(5)}, {currentLocation.longitude.toFixed(5)}
-                {'\n'}Arah HP: {deviceHeading}°
+                {'\n'}Arah Kamera (Heading): {deviceHeading}°
               </Text>
             )}
           </Dialog.Content>
@@ -859,11 +906,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#111625',
   },
   map: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
   },
   topContainer: {
     position: 'absolute',
-    top: Platform.OS === 'web' ? 12 : 42,
+    top: Platform.OS === 'web' ? 12 : 45, // Padding top ditambah agar tidak terlalu keatas
     left: 14,
     right: 14,
     zIndex: 2000,
@@ -871,40 +918,38 @@ const styles = StyleSheet.create({
   gmapsSearchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1e2638',
     borderRadius: 28,
     paddingHorizontal: 4,
-    height: 50,
+    height: 52,
     elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.3,
     shadowRadius: 5,
+    backgroundColor: '#1e2638', // Warna override di render prop logic
   },
   innerSearchInput: {
     flex: 1,
     backgroundColor: 'transparent',
-    height: 50,
+    height: 52,
   },
   searchInputText: {
-    color: '#ffffff',
     fontSize: 15,
   },
   chipScrollView: {
     marginTop: 10,
   },
   categoryChip: {
-    backgroundColor: '#1e2638',
     marginRight: 8,
     borderRadius: 20,
     borderWidth: 0,
+    backgroundColor: '#1e2638', // override by darkmode check if needed
   },
   chipText: {
     color: '#ffffff',
     fontSize: 13,
   },
   searchResultsContainer: {
-    backgroundColor: '#1e2638',
     borderRadius: 14,
     marginTop: 8,
     maxHeight: 220,
@@ -916,42 +961,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#2a344d',
+    borderBottomColor: 'rgba(150,150,150,0.1)',
     gap: 10,
   },
   searchResultText: {
-    color: '#e2e8f0',
     fontSize: 14,
     flex: 1,
   },
 
-  /* BANNER ATO INSTURKSI NAVIGASI MODE BERANGKAT */
+  /* BANNER NAVIGASI AKTIF (MODE BERANGKAT) */
   navBannerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#000000',
+    backgroundColor: '#0a101d', // Sangat gelap untuk kontras
     borderRadius: 16,
-    padding: 12,
+    padding: 14,
     elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
   },
   navTurnIcon: {
     marginRight: 12,
   },
   navDistanceText: {
     color: '#ffffff',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
   },
   navRoadNameText: {
     color: '#38b6ff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 2,
   },
 
   /* FLOATING COMPASS */
   leftCompassContainer: {
     position: 'absolute',
-    top: Platform.OS === 'web' ? 75 : 105,
+    top: Platform.OS === 'web' ? 75 : 110,
     left: 16,
     zIndex: 1000,
   },
@@ -959,7 +1007,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#000000',
+    backgroundColor: 'rgba(255,255,255,0.85)',
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 5,
@@ -967,9 +1015,9 @@ const styles = StyleSheet.create({
 
   speedometerContainer: {
     position: 'absolute',
-    top: 165,
+    top: Platform.OS === 'web' ? 125 : 160,
     left: 16,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     borderRadius: 25,
     width: 50,
     height: 50,
@@ -985,7 +1033,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   speedUnit: {
-    color: '#94a3b8',
+    color: '#e2e8f0',
     fontSize: 8,
   },
 
@@ -997,7 +1045,6 @@ const styles = StyleSheet.create({
     zIndex: 999,
   },
   controlFab: {
-    backgroundColor: '#1e2638',
     borderRadius: 20,
   },
 
@@ -1010,7 +1057,6 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   routePanelContainer: {
-    backgroundColor: '#1e2638',
     borderRadius: 18,
     padding: 14,
     elevation: 8,
@@ -1026,7 +1072,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 16,
     backgroundColor: '#111625',
     gap: 6,
@@ -1054,10 +1100,11 @@ const styles = StyleSheet.create({
   },
   routeDistanceText: {
     color: '#94a3b8',
-    fontSize: 12,
+    fontSize: 13,
   },
   startNavButton: {
     borderRadius: 20,
+    paddingHorizontal: 8,
   },
 
   /* BAR BOTTOM KETIKA BERANGKAT (NAVIGASI AKTIF) */
@@ -1068,8 +1115,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#1c222e',
     borderRadius: 30,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.3,
   },
   recenterNavSection: {
     flexDirection: 'row',
@@ -1078,8 +1128,8 @@ const styles = StyleSheet.create({
   },
   recenterIconCircle: {
     width: 42,
-    height: 44,
-    borderRadius: 22,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: '#2d3748',
     justifyContent: 'center',
     alignItems: 'center',
