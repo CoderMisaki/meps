@@ -116,7 +116,13 @@ const WEB_MAP_HTML = `
 <body>
   <div id="map"></div>
   <script>
-    var map = L.map('map', { zoomControl: false }).setView([-6.2088, 106.8456], 15);
+    var map = L.map('map', {
+      zoomControl: false,
+      dragging: true,
+      touchZoom: true,
+      doubleClickZoom: true,
+      scrollWheelZoom: true
+    }).setView([-6.2088, 106.8456], 15);
 
     var darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
     var satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
@@ -159,7 +165,7 @@ const WEB_MAP_HTML = `
           }
         }
 
-        // 2. Update Rotasi Panah Heading HP
+        // 2. Update Rotasi Panah Heading
         if (data.type === 'UPDATE_HEADING') {
           currentHeading = data.heading || 0;
           if (userMarker) {
@@ -190,11 +196,18 @@ const WEB_MAP_HTML = `
         // 5. Center Map GPS
         if (data.type === 'CENTER_MAP') {
           if (data.latitude && data.longitude) {
-            map.flyTo([data.latitude, data.longitude], 16, { animate: true, duration: 1 });
+            map.flyTo([data.latitude, data.longitude], 17, { animate: true, duration: 1 });
           }
         }
 
-        // 6. Toggle Layer Peta
+        // 6. Fit Bounds (Tinjauan Rute Lengkap)
+        if (data.type === 'FIT_BOUNDS') {
+          if (routePolyline) {
+            map.fitBounds(routePolyline.getBounds(), { padding: [60, 60] });
+          }
+        }
+
+        // 7. Toggle Layer Peta
         if (data.type === 'TOGGLE_LAYER') {
           if (data.layer === 'satellite') {
             if (map.hasLayer(darkLayer)) map.removeLayer(darkLayer);
@@ -205,7 +218,7 @@ const WEB_MAP_HTML = `
           }
         }
 
-        // 7. Tambah Marker kustom
+        // 8. Tambah Marker Kustom
         if (data.type === 'ADD_MARKER') {
           var pinIcon = L.divIcon({ className: 'custom-pin', iconSize: [18, 18], iconAnchor: [9, 9] });
           var m = L.marker([data.latitude, data.longitude], { icon: pinIcon });
@@ -213,7 +226,6 @@ const WEB_MAP_HTML = `
           customMarkersGroup.addLayer(m);
         }
 
-        // 8. Bersihkan Hasil Kategori
         if (data.type === 'CLEAR_CATEGORY_MARKERS') {
           customMarkersGroup.clearLayers();
         }
@@ -238,7 +250,7 @@ const HomeScreen = () => {
   const [speed, setSpeed] = useState<number | null>(null);
   const [deviceHeading, setDeviceHeading] = useState<number>(0);
 
-  // Navigasi, Layer & Marker State
+  // Navigasi & Mode Berangkat State
   const [destination, setDestination] = useState<Destination | null>(null);
   const [routeMode, setRouteMode] = useState<RouteMode>('motorcycle');
   const [routeCoords, setRouteCoordinates] = useState<{ latitude: number; longitude: number }[]>([]);
@@ -247,7 +259,7 @@ const HomeScreen = () => {
   const [isSatellite, setIsSatellite] = useState(false);
   const [isHeadingLocked, setIsHeadingLocked] = useState(false);
 
-  // Marker & Popup State
+  // Marker State
   const [customMarkers, setCustomMarkers] = useState<CustomMarker[]>([]);
   const [showAddMarkerDialog, setShowAddMarkerDialog] = useState(false);
   const [markerTitleInput, setMarkerTitleInput] = useState('');
@@ -257,47 +269,12 @@ const HomeScreen = () => {
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastRerouteTimeRef = useRef<number>(0);
 
-  // Kirim Pesan ke Web Iframe
   const postToWebMap = (data: object) => {
     if (Platform.OS === 'web' && iframeRef.current?.contentWindow) {
       iframeRef.current.contentWindow.postMessage(JSON.stringify(data), '*');
     }
   };
 
-  // 1. Rumus Jarak Haversine (Meter)
-  const calculateDistanceMeters = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371e3;
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-    const a =
-      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
-  };
-
-  // 2. Cek Keluar Rute Navigasi
-  const isUserOffRoute = (
-    userLat: number,
-    userLng: number,
-    polyline: { latitude: number; longitude: number }[],
-    thresholdMeters = 35
-  ) => {
-    if (!polyline || polyline.length === 0) return false;
-    let minDistance = Infinity;
-
-    for (const point of polyline) {
-      const dist = calculateDistanceMeters(userLat, userLng, point.latitude, point.longitude);
-      if (dist < minDistance) minDistance = dist;
-    }
-    return minDistance > thresholdMeters;
-  };
-
-  // 3. API Fetch Rute Tercepat (OSRM Engine)
   const fetchFastestRoute = async (
     startLat: number,
     startLng: number,
@@ -344,7 +321,6 @@ const HomeScreen = () => {
     }
   };
 
-  // 4. Request Lokasi & Pantau Heading Mata Angin HP
   const requestLocation = async () => {
     try {
       setLocationErrorMsg(null);
@@ -364,7 +340,6 @@ const HomeScreen = () => {
         return;
       }
 
-      // Watch Position GPS Realtime
       await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
@@ -391,28 +366,9 @@ const HomeScreen = () => {
           } else {
             setSpeed(0);
           }
-
-          // Auto-Rerouting
-          if (destination && isNavigating) {
-            const now = Date.now();
-            if (now - lastRerouteTimeRef.current > 5000) {
-              const offRoute = isUserOffRoute(newCoords.latitude, newCoords.longitude, routeCoords);
-              if (offRoute) {
-                lastRerouteTimeRef.current = now;
-                fetchFastestRoute(
-                  newCoords.latitude,
-                  newCoords.longitude,
-                  destination.latitude,
-                  destination.longitude,
-                  routeMode
-                );
-              }
-            }
-          }
         }
       );
 
-      // Watch Compass / Orientation HP
       await Location.watchHeadingAsync((headingData) => {
         const heading = Math.round(headingData.trueHeading || headingData.magHeading || 0);
         setDeviceHeading(heading);
@@ -431,7 +387,6 @@ const HomeScreen = () => {
     }
   };
 
-  // 5. Fitur Pencarian Lokasi Akurat
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
@@ -465,7 +420,6 @@ const HomeScreen = () => {
     }, 400);
   };
 
-  // Pilih Lokasi Pencarian
   const handleSelectSearchResult = (result: any) => {
     setSearchQuery(result.display_name);
     setSearchResults([]);
@@ -490,13 +444,11 @@ const HomeScreen = () => {
     }
   };
 
-  // 6. Fitur Chip Kategori (Restoran, SPBU, Kafe, dll.)
   const handleCategorySearch = (categoryName: string) => {
     setSearchQuery(categoryName);
     handleSearchChange(categoryName);
   };
 
-  // 7. Fitur Pencarian Suara (Voice Search)
   const handleVoiceSearch = () => {
     if (Platform.OS === 'web' && (window as any).webkitSpeechRecognition) {
       try {
@@ -516,11 +468,10 @@ const HomeScreen = () => {
         console.error('Speech recognition error:', e);
       }
     } else {
-      alert('Pencarian suara belum didukung di browser ini. Silakan ketik nama lokasi.');
+      alert('Pencarian suara belum didukung di browser ini.');
     }
   };
 
-  // 8. Fitur Kamera (Ambil / Lampirkan Foto Tempat)
   const handlePickLocationPhoto = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -537,7 +488,6 @@ const HomeScreen = () => {
     }
   };
 
-  // Ganti Moda Transportasi
   const handleModeChange = (mode: RouteMode) => {
     setRouteMode(mode);
     if (currentLocation && destination) {
@@ -551,7 +501,7 @@ const HomeScreen = () => {
     }
   };
 
-  // Center GPS
+  // Fitur "Ke Tengah"
   const centerMap = () => {
     if (!currentLocation) {
       requestLocation();
@@ -571,21 +521,23 @@ const HomeScreen = () => {
     }
   };
 
-  // Toggle Layer Satelit / Normal
+  // Fitur "Tinjauan"
+  const handleOverviewRoute = () => {
+    postToWebMap({ type: 'FIT_BOUNDS' });
+    if (Platform.OS !== 'web' && mapRef.current && routeCoords.length > 0) {
+      mapRef.current.fitToCoordinates(routeCoords, {
+        edgePadding: { top: 100, right: 60, bottom: 220, left: 60 },
+        animated: true,
+      });
+    }
+  };
+
   const toggleLayer = () => {
     const nextSat = !isSatellite;
     setIsSatellite(nextSat);
     postToWebMap({ type: 'TOGGLE_LAYER', layer: nextSat ? 'satellite' : 'dark' });
   };
 
-  // Toggle Kompas Lock
-  const toggleCompassLock = () => {
-    const nextLock = !isHeadingLocked;
-    setIsHeadingLocked(nextLock);
-    centerMap();
-  };
-
-  // Simpan Marker Baru
   const handleConfirmAddMarker = () => {
     if (!currentLocation) return;
 
@@ -632,7 +584,7 @@ const HomeScreen = () => {
           style={styles.map}
           mapType={isSatellite ? 'satellite' : 'normal'}
           showsUserLocation
-          showsCompass
+          showsCompass={false}
           showsMyLocationButton={false}
         >
           {destination && (
@@ -656,213 +608,196 @@ const HomeScreen = () => {
         </MapView>
       )}
 
-      {/* 2. TOP BAR SEARCH (GOOGLE MAPS STYLE) */}
-      <View style={styles.topContainer}>
-        <View style={styles.gmapsSearchBar}>
-          <IconButton
-            icon="magnify"
-            iconColor="#9aa0a6"
-            size={24}
-            onPress={() => handleSearchChange(searchQuery)}
-          />
-          <Searchbar
-            placeholder="Telusuri di sini"
-            onChangeText={handleSearchChange}
-            value={searchQuery}
-            style={styles.innerSearchInput}
-            inputStyle={styles.searchInputText}
-            placeholderTextColor="#9aa0a6"
-            elevation={0}
-          />
-          <IconButton icon="microphone" iconColor="#8ab4f8" size={22} onPress={handleVoiceSearch} />
-          <IconButton icon="camera-outline" iconColor="#8ab4f8" size={22} onPress={handlePickLocationPhoto} />
-          <TouchableOpacity style={styles.avatarCircle} onPress={() => setShowProfileModal(true)}>
-            <Text style={styles.avatarText}>M</Text>
-          </TouchableOpacity>
-        </View>
+      {/* 2. OVERLAY HEADER / SEARCH BAR (pointerEvents="box-none") */}
+      <View style={styles.topContainer} pointerEvents="box-none">
+        {!isNavigating ? (
+          /* Tampilan Normal: Search Bar & Hamburger */
+          <>
+            <View style={styles.gmapsSearchBar}>
+              <IconButton
+                icon="menu"
+                iconColor="#ffffff"
+                size={22}
+                onPress={() => setShowProfileModal(true)}
+              />
+              <Searchbar
+                placeholder="Kemana?"
+                onChangeText={handleSearchChange}
+                value={searchQuery}
+                style={styles.innerSearchInput}
+                inputStyle={styles.searchInputText}
+                placeholderTextColor="#9aa0a6"
+                elevation={0}
+              />
+              <IconButton icon="microphone" iconColor="#ffffff" size={22} onPress={handleVoiceSearch} />
+              <IconButton icon="camera-outline" iconColor="#ffffff" size={22} onPress={handlePickLocationPhoto} />
+            </View>
 
-        {/* Kategori Fast Chips */}
-        {searchResults.length === 0 && !destination && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScrollView}>
-            <Chip
-              icon="food-fork-drink"
-              style={styles.categoryChip}
-              textStyle={styles.chipText}
-              onPress={() => handleCategorySearch('Restoran')}
-            >
-              Restoran
-            </Chip>
-            <Chip
-              icon="shopping-outline"
-              style={styles.categoryChip}
-              textStyle={styles.chipText}
-              onPress={() => handleCategorySearch('Belanja')}
-            >
-              Belanja
-            </Chip>
-            <Chip
-              icon="bed-outline"
-              style={styles.categoryChip}
-              textStyle={styles.chipText}
-              onPress={() => handleCategorySearch('Hotel')}
-            >
-              Hotel
-            </Chip>
-            <Chip
-              icon="coffee-outline"
-              style={styles.categoryChip}
-              textStyle={styles.chipText}
-              onPress={() => handleCategorySearch('Kafe')}
-            >
-              Kafe
-            </Chip>
-            <Chip
-              icon="gas-station-outline"
-              style={styles.categoryChip}
-              textStyle={styles.chipText}
-              onPress={() => handleCategorySearch('SPBU')}
-            >
-              SPBU
-            </Chip>
-          </ScrollView>
-        )}
+            {/* Chips Kategori */}
+            {searchResults.length === 0 && !destination && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScrollView}>
+                <Chip icon="home" style={styles.categoryChip} textStyle={styles.chipText} onPress={() => handleCategorySearch('Rumah')}>
+                  Rumah
+                </Chip>
+                <Chip icon="briefcase" style={styles.categoryChip} textStyle={styles.chipText} onPress={() => handleCategorySearch('Kantor')}>
+                  Kantor
+                </Chip>
+                <Chip icon="bookmark" style={styles.categoryChip} textStyle={styles.chipText} onPress={() => handleCategorySearch('Saved')}>
+                  Silat
+                </Chip>
+              </ScrollView>
+            )}
 
-        {/* Dropdown Hasil Pencarian Tempat */}
-        {searchResults.length > 0 && (
-          <View style={styles.searchResultsContainer}>
-            <FlatList
-              data={searchResults}
-              keyExtractor={(item, idx) => item.place_id?.toString() || idx.toString()}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.searchResultItem}
-                  onPress={() => handleSelectSearchResult(item)}
-                >
-                  <MaterialCommunityIcons name="map-marker-outline" size={20} color="#8ab4f8" />
-                  <Text style={styles.searchResultText} numberOfLines={2}>
-                    {item.display_name}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
+            {/* Dropdown Hasil Pencarian */}
+            {searchResults.length > 0 && (
+              <View style={styles.searchResultsContainer}>
+                <FlatList
+                  data={searchResults}
+                  keyExtractor={(item, idx) => item.place_id?.toString() || idx.toString()}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.searchResultItem}
+                      onPress={() => handleSelectSearchResult(item)}
+                    >
+                      <MaterialCommunityIcons name="map-marker-outline" size={20} color="#8ab4f8" />
+                      <Text style={styles.searchResultText} numberOfLines={2}>
+                        {item.display_name}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            )}
+          </>
+        ) : (
+          /* Tampilan Mode Navigasi / Mode Berangkat (Banner Atas) */
+          <View style={styles.navBannerTop}>
+            <MaterialCommunityIcons name="arrow-top-right" size={38} color="#ffffff" style={styles.navTurnIcon} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.navDistanceText}>0 m</Text>
+              <Text style={styles.navRoadNameText} numberOfLines={1}>
+                {destination?.title || 'Menceng Raya'}
+              </Text>
+            </View>
+            <IconButton icon="close" iconColor="#ffffff" size={24} onPress={() => setIsNavigating(false)} />
           </View>
         )}
       </View>
 
-      {/* 3. SPEEDOMETER & COMPASS ANGLE */}
-      {speed !== null && (
+      {/* 3. TOMBOL KOMPAS FLOATING (Kiri Atas) */}
+      <View style={styles.leftCompassContainer} pointerEvents="box-none">
+        <TouchableOpacity style={styles.compassButton} onPress={centerMap}>
+          <MaterialCommunityIcons name="compass" size={26} color="#38b6ff" />
+        </TouchableOpacity>
+      </View>
+
+      {/* 4. SPEEDOMETER */}
+      {speed !== null && !isNavigating && (
         <View style={styles.speedometerContainer}>
-          <Text style={[styles.speedText, speed > 60 && styles.speedWarning]}>{speed}</Text>
+          <Text style={styles.speedText}>{speed}</Text>
           <Text style={styles.speedUnit}>km/h</Text>
         </View>
       )}
 
-      {/* 4. FAB CONTROLS (LAYER, TAMBAH MARKER, KOMPAS, GPS) */}
-      <View style={styles.rightControlsContainer}>
-        {/* Toggle Layer Satelit */}
-        <FAB
-          icon={isSatellite ? 'map-outline' : 'layers-outline'}
-          style={styles.controlFab}
-          color="#8ab4f8"
-          size="small"
-          onPress={toggleLayer}
-        />
-        {/* Toggle Kunci Kompas Arah HP */}
-        <FAB
-          icon="compass-outline"
-          style={[styles.controlFab, isHeadingLocked && { backgroundColor: '#1a73e8' }]}
-          color={isHeadingLocked ? '#ffffff' : '#8ab4f8'}
-          size="small"
-          onPress={toggleCompassLock}
-        />
-        {/* Tambah Pin Marker */}
-        <FAB
-          icon="plus"
-          style={styles.controlFab}
-          color="#8ab4f8"
-          size="small"
-          onPress={() => setShowAddMarkerDialog(true)}
-        />
-        {/* Center GPS */}
-        <FAB
-          icon="crosshairs-gps"
-          style={styles.controlFab}
-          color="#8ab4f8"
-          size="small"
-          onPress={centerMap}
-        />
-      </View>
-
-      {/* 5. PANEL NAVIGASI & MODA TRANSPORTASI */}
-      {destination && (
-        <View style={styles.routePanelContainer}>
-          <View style={styles.modeSelectorRow}>
-            <TouchableOpacity
-              style={[styles.modeButton, routeMode === 'motorcycle' && styles.modeButtonActive]}
-              onPress={() => handleModeChange('motorcycle')}
-            >
-              <MaterialCommunityIcons
-                name="motorbike"
-                size={22}
-                color={routeMode === 'motorcycle' ? '#ffffff' : '#8ab4f8'}
-              />
-              <Text style={[styles.modeText, routeMode === 'motorcycle' && styles.modeTextActive]}>
-                Motor
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.modeButton, routeMode === 'driving' && styles.modeButtonActive]}
-              onPress={() => handleModeChange('driving')}
-            >
-              <MaterialCommunityIcons
-                name="car"
-                size={22}
-                color={routeMode === 'driving' ? '#ffffff' : '#8ab4f8'}
-              />
-              <Text style={[styles.modeText, routeMode === 'driving' && styles.modeTextActive]}>
-                Mobil
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.modeButton, routeMode === 'foot' && styles.modeButtonActive]}
-              onPress={() => handleModeChange('foot')}
-            >
-              <MaterialCommunityIcons
-                name="walk"
-                size={22}
-                color={routeMode === 'foot' ? '#ffffff' : '#8ab4f8'}
-              />
-              <Text style={[styles.modeText, routeMode === 'foot' && styles.modeTextActive]}>
-                Jalan Kaki
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {routeInfo && (
-            <View style={styles.routeDetailsRow}>
-              <View>
-                <Text style={styles.routeDurationText}>{routeInfo.duration}</Text>
-                <Text style={styles.routeDistanceText}>
-                  {routeInfo.distance} • Rute tercepat & Auto-reroute
-                </Text>
-              </View>
-              <Button
-                mode="contained"
-                buttonColor={isNavigating ? '#ea4335' : '#1a73e8'}
-                textColor="#ffffff"
-                style={styles.startNavButton}
-                onPress={() => setIsNavigating(!isNavigating)}
-              >
-                {isNavigating ? 'Selesai' : 'Mulai'}
-              </Button>
-            </View>
-          )}
+      {/* 5. RIGHT CONTROLS (FABs) */}
+      {!isNavigating && (
+        <View style={styles.rightControlsContainer} pointerEvents="box-none">
+          <FAB
+            icon={isSatellite ? 'map-outline' : 'layers-outline'}
+            style={styles.controlFab}
+            color="#8ab4f8"
+            size="small"
+            onPress={toggleLayer}
+          />
+          <FAB
+            icon="plus"
+            style={styles.controlFab}
+            color="#8ab4f8"
+            size="small"
+            onPress={() => setShowAddMarkerDialog(true)}
+          />
+          <FAB
+            icon="crosshairs-gps"
+            style={styles.controlFab}
+            color="#8ab4f8"
+            size="small"
+            onPress={centerMap}
+          />
         </View>
       )}
 
-      {/* Dialog Tambah Marker / Foto */}
+      {/* 6. BOTTOM PANEL (PRE-NAVIGASI / MODE BERANGKAT) */}
+      <View style={styles.bottomContainer} pointerEvents="box-none">
+        {/* State A: Pilihan Rute Sebelum Berangkat */}
+        {destination && !isNavigating && (
+          <View style={styles.routePanelContainer}>
+            <View style={styles.modeSelectorRow}>
+              <TouchableOpacity
+                style={[styles.modeButton, routeMode === 'motorcycle' && styles.modeButtonActive]}
+                onPress={() => handleModeChange('motorcycle')}
+              >
+                <MaterialCommunityIcons name="motorbike" size={20} color={routeMode === 'motorcycle' ? '#ffffff' : '#8ab4f8'} />
+                <Text style={[styles.modeText, routeMode === 'motorcycle' && styles.modeTextActive]}>Motor</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeButton, routeMode === 'driving' && styles.modeButtonActive]}
+                onPress={() => handleModeChange('driving')}
+              >
+                <MaterialCommunityIcons name="car" size={20} color={routeMode === 'driving' ? '#ffffff' : '#8ab4f8'} />
+                <Text style={[styles.modeText, routeMode === 'driving' && styles.modeTextActive]}>Mobil</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeButton, routeMode === 'foot' && styles.modeButtonActive]}
+                onPress={() => handleModeChange('foot')}
+              >
+                <MaterialCommunityIcons name="walk" size={20} color={routeMode === 'foot' ? '#ffffff' : '#8ab4f8'} />
+                <Text style={[styles.modeText, routeMode === 'foot' && styles.modeTextActive]}>Jalan</Text>
+              </TouchableOpacity>
+            </View>
+
+            {routeInfo && (
+              <View style={styles.routeDetailsRow}>
+                <View>
+                  <Text style={styles.routeDurationText}>{routeInfo.duration}</Text>
+                  <Text style={styles.routeDistanceText}>{routeInfo.distance} • Rute Tercepat</Text>
+                </View>
+                <Button
+                  mode="contained"
+                  buttonColor="#1a73e8"
+                  textColor="#ffffff"
+                  style={styles.startNavButton}
+                  onPress={() => setIsNavigating(true)}
+                >
+                  Mulai
+                </Button>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* State B: UI Navigasi Aktif / "Mode Berangkat" (Sesuai Gambar Referensi) */}
+        {isNavigating && (
+          <View style={styles.navBarBottom}>
+            <TouchableOpacity style={styles.recenterNavSection} onPress={centerMap}>
+              <View style={styles.recenterIconCircle}>
+                <MaterialCommunityIcons name="crosshairs-gps" size={24} color="#ffffff" />
+              </View>
+              <View style={{ marginLeft: 12 }}>
+                <Text style={styles.recenterTitleText}>Ke tengah</Text>
+                <Text style={styles.recenterSubText}>
+                  {routeInfo ? `${routeInfo.duration} • ${routeInfo.distance}` : '19 menit • 5.5 km'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.overviewButton} onPress={handleOverviewRoute}>
+              <Text style={styles.overviewButtonText}>Tinjauan</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* DIALOGS */}
       <Portal>
         <Dialog visible={showAddMarkerDialog} onDismiss={() => setShowAddMarkerDialog(false)}>
           <Dialog.Title>Tambah Pin Marker Baru</Dialog.Title>
@@ -886,16 +821,15 @@ const HomeScreen = () => {
         </Dialog>
       </Portal>
 
-      {/* Dialog Profil Ringkas */}
       <Portal>
         <Dialog visible={showProfileModal} onDismiss={() => setShowProfileModal(false)}>
-          <Dialog.Title>Profil Pengguna</Dialog.Title>
+          <Dialog.Title>Pengaturan Navigasi</Dialog.Title>
           <Dialog.Content>
-            <Text variant="bodyMedium">Mako Maps AI - Status GPS Aktif</Text>
+            <Text variant="bodyMedium">Personal Maps AI - Status GPS Aktif</Text>
             {currentLocation && (
               <Text variant="bodySmall" style={{ marginTop: 8, color: '#94a3b8' }}>
                 Koordinat: {currentLocation.latitude.toFixed(5)}, {currentLocation.longitude.toFixed(5)}
-                {'\n'}Sudut HP: {deviceHeading}°
+                {'\n'}Arah HP: {deviceHeading}°
               </Text>
             )}
           </Dialog.Content>
@@ -905,7 +839,6 @@ const HomeScreen = () => {
         </Dialog>
       </Portal>
 
-      {/* Banner Peringatan GPS */}
       {locationErrorMsg && (
         <Banner
           visible={true}
@@ -916,21 +849,6 @@ const HomeScreen = () => {
           {locationErrorMsg}
         </Banner>
       )}
-
-      {/* Dialog Permission GPS */}
-      <Portal>
-        <Dialog visible={showPermissionDialog} onDismiss={() => setShowPermissionDialog(false)}>
-          <Dialog.Title>Izin Lokasi & GPS Diperlukan</Dialog.Title>
-          <Dialog.Content>
-            <Text variant="bodyMedium">
-              Aplikasi memerlukan GPS dan Kompas untuk menentukan lokasi serta navigasi rute tercepat secara real-time.
-            </Text>
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={requestLocation}>Nyalakan GPS</Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
     </View>
   );
 };
@@ -938,14 +856,14 @@ const HomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#171d2d',
+    backgroundColor: '#111625',
   },
   map: {
     ...StyleSheet.absoluteFill,
   },
   topContainer: {
     position: 'absolute',
-    top: Platform.OS === 'web' ? 15 : 45,
+    top: Platform.OS === 'web' ? 12 : 42,
     left: 14,
     right: 14,
     zIndex: 2000,
@@ -953,57 +871,43 @@ const styles = StyleSheet.create({
   gmapsSearchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#242b3d',
-    borderRadius: 30,
-    paddingHorizontal: 6,
-    height: 52,
+    backgroundColor: '#1e2638',
+    borderRadius: 28,
+    paddingHorizontal: 4,
+    height: 50,
     elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowOpacity: 0.4,
+    shadowRadius: 5,
   },
   innerSearchInput: {
     flex: 1,
     backgroundColor: 'transparent',
-    height: 52,
+    height: 50,
   },
   searchInputText: {
     color: '#ffffff',
     fontSize: 15,
   },
-  avatarCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#a855f7',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  avatarText: {
-    color: '#ffffff',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
   chipScrollView: {
     marginTop: 10,
   },
   categoryChip: {
-    backgroundColor: '#242b3d',
+    backgroundColor: '#1e2638',
     marginRight: 8,
     borderRadius: 20,
+    borderWidth: 0,
   },
   chipText: {
-    color: '#e2e8f0',
+    color: '#ffffff',
     fontSize: 13,
   },
   searchResultsContainer: {
-    backgroundColor: '#242b3d',
-    borderRadius: 12,
+    backgroundColor: '#1e2638',
+    borderRadius: 14,
     marginTop: 8,
     maxHeight: 220,
-    paddingVertical: 4,
     elevation: 10,
     zIndex: 2001,
   },
@@ -1012,7 +916,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#2d3548',
+    borderBottomColor: '#2a344d',
     gap: 10,
   },
   searchResultText: {
@@ -1020,58 +924,101 @@ const styles = StyleSheet.create({
     fontSize: 14,
     flex: 1,
   },
-  speedometerContainer: {
-    position: 'absolute',
-    top: 135,
-    left: 16,
-    backgroundColor: 'rgba(23, 29, 45, 0.85)',
-    borderRadius: 30,
-    width: 54,
-    height: 54,
-    justifyContent: 'center',
+
+  /* BANNER ATO INSTURKSI NAVIGASI MODE BERANGKAT */
+  navBannerTop: {
+    flexDirection: 'row',
     alignItems: 'center',
-    zIndex: 5,
-    borderWidth: 1.5,
-    borderColor: '#38b6ff',
+    backgroundColor: '#000000',
+    borderRadius: 16,
+    padding: 12,
+    elevation: 8,
   },
-  speedText: {
+  navTurnIcon: {
+    marginRight: 12,
+  },
+  navDistanceText: {
     color: '#ffffff',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  navRoadNameText: {
+    color: '#38b6ff',
     fontSize: 18,
     fontWeight: 'bold',
   },
-  speedWarning: {
-    color: '#ff4444',
+
+  /* FLOATING COMPASS */
+  leftCompassContainer: {
+    position: 'absolute',
+    top: Platform.OS === 'web' ? 75 : 105,
+    left: 16,
+    zIndex: 1000,
+  },
+  compassButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+  },
+
+  speedometerContainer: {
+    position: 'absolute',
+    top: 165,
+    left: 16,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    borderRadius: 25,
+    width: 50,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#38b6ff',
+    zIndex: 5,
+  },
+  speedText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   speedUnit: {
     color: '#94a3b8',
-    fontSize: 9,
+    fontSize: 8,
   },
+
   rightControlsContainer: {
     position: 'absolute',
     right: 14,
     bottom: 120,
-    gap: 12,
+    gap: 10,
     zIndex: 999,
   },
   controlFab: {
-    backgroundColor: '#242b3d',
+    backgroundColor: '#1e2638',
     borderRadius: 20,
   },
-  routePanelContainer: {
+
+  /* BOTTOM CONTAINERS */
+  bottomContainer: {
     position: 'absolute',
-    bottom: 20,
-    left: 14,
-    right: 14,
-    backgroundColor: '#242b3d',
-    borderRadius: 20,
-    padding: 16,
-    zIndex: 10,
+    bottom: 15,
+    left: 12,
+    right: 12,
+    zIndex: 1000,
+  },
+  routePanelContainer: {
+    backgroundColor: '#1e2638',
+    borderRadius: 18,
+    padding: 14,
     elevation: 8,
   },
   modeSelectorRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
     gap: 8,
   },
   modeButton: {
@@ -1080,8 +1027,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#171d2d',
+    borderRadius: 16,
+    backgroundColor: '#111625',
     gap: 6,
   },
   modeButtonActive: {
@@ -1099,7 +1046,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
   },
   routeDurationText: {
     color: '#34a853',
@@ -1112,14 +1058,59 @@ const styles = StyleSheet.create({
   },
   startNavButton: {
     borderRadius: 20,
-    paddingHorizontal: 12,
   },
+
+  /* BAR BOTTOM KETIKA BERANGKAT (NAVIGASI AKTIF) */
+  navBarBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#1c222e',
+    borderRadius: 30,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    elevation: 10,
+  },
+  recenterNavSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  recenterIconCircle: {
+    width: 42,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#2d3748',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recenterTitleText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  recenterSubText: {
+    color: '#94a3b8',
+    fontSize: 13,
+  },
+  overviewButton: {
+    backgroundColor: '#384252',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+  },
+  overviewButtonText: {
+    color: '#38b6ff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+
   bannerAlert: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    zIndex: 20,
+    zIndex: 3000,
   },
 });
 
