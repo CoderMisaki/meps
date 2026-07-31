@@ -1,11 +1,11 @@
 import { Platform } from 'react-native';
-import * as SQLite from 'expo-sqlite';
 
-let db: SQLite.SQLiteDatabase | null = null;
+let db: any = null;
 
 export const getDatabase = async () => {
   if (Platform.OS === 'web') return null;
   if (!db) {
+    const SQLite = require('expo-sqlite');
     db = await SQLite.openDatabaseAsync('personalmaps.db');
   }
   return db;

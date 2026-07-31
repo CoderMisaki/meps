@@ -1,14 +1,20 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, View, Platform } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
 import { FAB, useTheme, Searchbar, Text } from 'react-native-paper';
 import { useAppStore } from '../store';
 import * as Location from 'expo-location';
 import { startLocationTracking, stopLocationTracking } from '../services/location';
 
+// Load MapView hanya jika bukan Web
+let MapView: any = null;
+if (Platform.OS !== 'web') {
+  MapView = require('react-native-maps').default;
+}
+
+
 const HomeScreen = () => {
   const theme = useTheme();
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<any>(null);
   const { isTracking, setTracking, currentLocation, setCurrentLocation, settings } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
 

@@ -1,11 +1,11 @@
 import { Platform } from 'react-native';
 import * as Location from 'expo-location';
-import * as TaskManager from 'expo-task-manager';
 import { useAppStore } from '../store';
 
 const LOCATION_TASK_NAME = 'background-location-task';
 
 if (Platform.OS !== 'web') {
+  const TaskManager = require('expo-task-manager');
   TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }: any) => {
     if (error) {
       console.error(error);
