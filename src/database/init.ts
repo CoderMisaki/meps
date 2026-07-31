@@ -1,8 +1,10 @@
+import { Platform } from 'react-native';
 import * as SQLite from 'expo-sqlite';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
 export const getDatabase = async () => {
+  if (Platform.OS === 'web') return null;
   if (!db) {
     db = await SQLite.openDatabaseAsync('personalmaps.db');
   }
@@ -10,7 +12,13 @@ export const getDatabase = async () => {
 };
 
 export const initDatabase = async () => {
+  if (Platform.OS === 'web') {
+    console.warn('SQLite is disabled on Web platform.');
+    return;
+  }
+
   const database = await getDatabase();
+  if (!database) return;
 
   await database.execAsync(`
     PRAGMA journal_mode = WAL;
