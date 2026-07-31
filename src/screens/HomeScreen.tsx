@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, View, Platform } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
-import { FAB, useTheme, Searchbar } from 'react-native-paper';
+import { FAB, useTheme, Searchbar, Text } from 'react-native-paper';
 import { useAppStore } from '../store';
 import * as Location from 'expo-location';
 import { startLocationTracking, stopLocationTracking } from '../services/location';
@@ -58,14 +58,26 @@ const HomeScreen = () => {
 
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        mapType={settings.mapType as any}
-        showsUserLocation
-        showsCompass
-        showsMyLocationButton={false}
-      />
+      {/* Fallback Peta untuk Web */}
+      {Platform.OS === 'web' ? (
+        <View style={[styles.map, styles.webMapFallback, { backgroundColor: theme.colors.surfaceVariant }]}>
+          <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+            Peta Interaktif (Mode Mobile Native)
+          </Text>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}>
+            Lokasi Saat Ini: {currentLocation ? `${currentLocation.latitude.toFixed(4)}, ${currentLocation.longitude.toFixed(4)}` : 'Memuat lokasi...'}
+          </Text>
+        </View>
+      ) : (
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          mapType={settings.mapType as any}
+          showsUserLocation
+          showsCompass
+          showsMyLocationButton={false}
+        />
+      )}
 
       <View style={styles.searchContainer}>
         <Searchbar
@@ -114,6 +126,11 @@ const styles = StyleSheet.create({
   },
   map: {
     ...StyleSheet.absoluteFill,
+  },
+  webMapFallback: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   searchContainer: {
     position: 'absolute',
